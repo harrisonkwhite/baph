@@ -23,43 +23,9 @@ Player :: struct {
 	vel: zf4.Vec_2D,
 }
 
-calc_camera_size :: proc(window_size: zf4.Size_2D) -> zf4.Vec_2D {
-	return {f32(window_size.x) / CAMERA_SCALE, f32(window_size.y) / CAMERA_SCALE}
-}
-
-calc_camera_top_left :: proc(cam_pos: zf4.Vec_2D, window_size: zf4.Size_2D) -> zf4.Vec_2D {
-	return cam_pos - (calc_camera_size(window_size) / 2.0)
-}
-
-camera_to_screen_pos :: proc(
-	pos: zf4.Vec_2D,
-	cam_pos: zf4.Vec_2D,
-	window_size: zf4.Size_2D,
-) -> zf4.Vec_2D {
-	cam_tl := calc_camera_top_left(cam_pos, window_size)
-	return (pos - cam_tl) * CAMERA_SCALE
-}
-
-screen_to_camera_pos :: proc(
-	pos: zf4.Vec_2D,
-	cam_pos: zf4.Vec_2D,
-	window_size: zf4.Size_2D,
-) -> zf4.Vec_2D {
-	cam_tl := calc_camera_top_left(cam_pos, window_size)
-	return cam_tl + (pos / CAMERA_SCALE)
-}
-
-init_camera_view_matrix_4x4 :: proc(
-	mat: ^zf4.Matrix_4x4,
-	cam_pos: zf4.Vec_2D,
-	window_size: zf4.Size_2D,
-) {
-	mem.zero(mat, size_of(mat^))
-	mat.elems[0][0] = CAMERA_SCALE
-	mat.elems[1][1] = CAMERA_SCALE
-	mat.elems[3][3] = 1.0
-	mat.elems[3][0] = (-cam_pos.x * CAMERA_SCALE) + (f32(window_size.x) / 2.0)
-	mat.elems[3][1] = (-cam_pos.y * CAMERA_SCALE) + (f32(window_size.y) / 2.0)
+init_level :: proc(level: ^Level) -> bool {
+	assert(level != nil)
+	return true
 }
 
 level_tick :: proc(level: ^Level, zf4_tick_data: ^zf4.Game_Tick_Func_Data) -> bool {
@@ -90,7 +56,7 @@ level_tick :: proc(level: ^Level, zf4_tick_data: ^zf4.Game_Tick_Func_Data) -> bo
 		mouse_cam_pos := screen_to_camera_pos(
 			zf4_tick_data.input_state.mouse_pos,
 			level.cam_pos,
-			{1280, 720},
+			zf4_tick_data.window_state_cache.size,
 		)
 		player_to_mouse_cam_pos_dist := zf4.calc_dist(level.player.pos, mouse_cam_pos)
 		player_to_mouse_cam_pos_dir := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
@@ -109,21 +75,75 @@ level_tick :: proc(level: ^Level, zf4_tick_data: ^zf4.Game_Tick_Func_Data) -> bo
 	return true
 }
 
-draw_level :: proc(level: ^Level, zf4_draw_data: ^zf4.Game_Draw_Func_Data) -> bool {
+render_level :: proc(level: ^Level, zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
+	assert(level != nil)
+	assert(zf4_data != nil)
+
 	init_camera_view_matrix_4x4(
-		&zf4_draw_data.draw_phase_state.view_mat,
+		&zf4_data.rendering_context.state.view_mat,
 		level.cam_pos,
-		{1280, 720},
+		zf4_data.rendering_context.display_size,
 	)
 
-	zf4.draw_texture(
-		i32(Texture.All),
+	zf4.render_texture(
+		&zf4_data.rendering_context,
+		int(Texture.All),
+		zf4_data.textures,
 		SPRITE_SRC_RECTS[int(Sprite.Player)],
 		level.player.pos,
-		zf4_draw_data.draw_phase_state,
-		zf4_draw_data.pers_render_data,
 	)
 
+	zf4.flush(&zf4_data.rendering_context)
+
 	return true
+}
+
+clean_level :: proc(level: ^Level) {
+	assert(level != nil)
+}
+
+calc_camera_size :: proc(window_size: zf4.Vec_2D_I) -> zf4.Vec_2D {
+	assert(zf4.is_size_i(window_size))
+	return {f32(window_size.x) / CAMERA_SCALE, f32(window_size.y) / CAMERA_SCALE}
+}
+
+calc_camera_top_left :: proc(cam_pos: zf4.Vec_2D, window_size: zf4.Vec_2D_I) -> zf4.Vec_2D {
+	assert(zf4.is_size_i(window_size))
+	return cam_pos - (calc_camera_size(window_size) / 2.0)
+}
+
+camera_to_screen_pos :: proc(
+	pos: zf4.Vec_2D,
+	cam_pos: zf4.Vec_2D,
+	window_size: zf4.Vec_2D_I,
+) -> zf4.Vec_2D {
+	assert(zf4.is_size_i(window_size))
+	cam_tl := calc_camera_top_left(cam_pos, window_size)
+	return (pos - cam_tl) * CAMERA_SCALE
+}
+
+screen_to_camera_pos :: proc(
+	pos: zf4.Vec_2D,
+	cam_pos: zf4.Vec_2D,
+	window_size: zf4.Vec_2D_I,
+) -> zf4.Vec_2D {
+	assert(zf4.is_size_i(window_size))
+	cam_tl := calc_camera_top_left(cam_pos, window_size)
+	return cam_tl + (pos / CAMERA_SCALE)
+}
+
+init_camera_view_matrix_4x4 :: proc(
+	mat: ^zf4.Matrix_4x4,
+	cam_pos: zf4.Vec_2D,
+	window_size: zf4.Vec_2D_I,
+) {
+	assert(zf4.is_size_i(window_size))
+
+	mem.zero(mat, size_of(mat^))
+	mat.elems[0][0] = CAMERA_SCALE
+	mat.elems[1][1] = CAMERA_SCALE
+	mat.elems[3][3] = 1.0
+	mat.elems[3][0] = (-cam_pos.x * CAMERA_SCALE) + (f32(window_size.x) / 2.0)
+	mat.elems[3][1] = (-cam_pos.y * CAMERA_SCALE) + (f32(window_size.y) / 2.0)
 }
 
