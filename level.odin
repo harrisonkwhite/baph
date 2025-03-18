@@ -18,6 +18,11 @@ Level :: struct {
 	player:  Player,
 }
 
+Level_Tick_Result :: enum {
+	Normal,
+	Go_To_Title,
+}
+
 Player :: struct {
 	pos: zf4.Vec_2D,
 	vel: zf4.Vec_2D,
@@ -28,19 +33,21 @@ init_level :: proc(level: ^Level) -> bool {
 	return true
 }
 
-level_tick :: proc(level: ^Level, zf4_tick_data: ^zf4.Game_Tick_Func_Data) -> bool {
+level_tick :: proc(level: ^Level, zf4_data: ^zf4.Game_Tick_Func_Data) -> Level_Tick_Result {
+	res := Level_Tick_Result.Normal
+
 	assert(level != nil)
-	assert(zf4_tick_data != nil)
+	assert(zf4_data != nil)
 
 	//
 	// Player
 	//
 	{
 		move_axis := zf4.Vec_2D {
-			f32(i32(zf4.is_key_down(zf4.Key_Code.D, zf4_tick_data.input_state))) -
-			f32(i32(zf4.is_key_down(zf4.Key_Code.A, zf4_tick_data.input_state))),
-			f32(i32(zf4.is_key_down(zf4.Key_Code.S, zf4_tick_data.input_state))) -
-			f32(i32(zf4.is_key_down(zf4.Key_Code.W, zf4_tick_data.input_state))),
+			f32(i32(zf4.is_key_down(zf4.Key_Code.D, zf4_data.input_state))) -
+			f32(i32(zf4.is_key_down(zf4.Key_Code.A, zf4_data.input_state))),
+			f32(i32(zf4.is_key_down(zf4.Key_Code.S, zf4_data.input_state))) -
+			f32(i32(zf4.is_key_down(zf4.Key_Code.W, zf4_data.input_state))),
 		}
 
 		vel_lerp_targ := move_axis * PLAYER_MOVE_SPD
@@ -54,9 +61,9 @@ level_tick :: proc(level: ^Level, zf4_tick_data: ^zf4.Game_Tick_Func_Data) -> bo
 	//
 	{
 		mouse_cam_pos := screen_to_camera_pos(
-			zf4_tick_data.input_state.mouse_pos,
+			zf4_data.input_state.mouse_pos,
 			level.cam_pos,
-			zf4_tick_data.window_state_cache.size,
+			zf4_data.window_state_cache.size,
 		)
 		player_to_mouse_cam_pos_dist := zf4.calc_dist(level.player.pos, mouse_cam_pos)
 		player_to_mouse_cam_pos_dir := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
@@ -72,7 +79,14 @@ level_tick :: proc(level: ^Level, zf4_tick_data: ^zf4.Game_Tick_Func_Data) -> bo
 		level.cam_pos = math.lerp(level.cam_pos, dest, f32(CAMERA_POS_LERP_FACTOR))
 	}
 
-	return true
+	//
+	// Processing Title Screen Switch Request
+	//
+	if zf4.is_key_pressed(zf4.Key_Code.Escape, zf4_data.input_state, zf4_data.input_state_last) {
+		res = Level_Tick_Result.Go_To_Title
+	}
+
+	return res
 }
 
 render_level :: proc(level: ^Level, zf4_data: ^zf4.Game_Render_Func_Data) -> bool {

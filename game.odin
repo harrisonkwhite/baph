@@ -131,8 +131,12 @@ exec_game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 			zf4_data.exit_game^ = true
 		}
 	} else {
-		if (!level_tick(&game.level, zf4_data)) {
-			return false
+		level_tick_res := level_tick(&game.level, zf4_data)
+
+		if level_tick_res == Level_Tick_Result.Go_To_Title {
+			clean_level(&game.level)
+			game.in_level = false
+			init_title_screen(&game.title_screen, &game.config)
 		}
 	}
 
