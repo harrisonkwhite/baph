@@ -10,6 +10,7 @@ PLAYER_SWORD_DMG :: 10
 PLAYER_SWORD_KNOCKBACK: f32 : 6.0
 PLAYER_SWORD_HITBOX_SIZE :: 32
 PLAYER_SWORD_HITBOX_OFFS_DIST: f32 : 40.0
+PLAYER_SWORD_OFFS_DIST: f32 : 6.0
 PLAYER_SWORD_ROT_OFFS: f32 : 130.0 * math.RAD_PER_DEG
 PLAYER_SWORD_ROT_OFFS_LERP: f32 : 0.4
 
@@ -121,11 +122,13 @@ append_player_level_render_tasks :: proc(
 		return false
 	}
 
+	sword_rot := player.sword_rot_base + player.sword_rot_offs
+
 	sword_task := Level_Layered_Render_Task {
-		pos        = player.pos,
+		pos        = player.pos + zf4.calc_len_dir(PLAYER_SWORD_OFFS_DIST, sword_rot),
 		origin     = {0.0, 0.5},
 		scale      = {1.0, 1.0},
-		rot        = player.sword_rot_base + player.sword_rot_offs,
+		rot        = sword_rot,
 		alpha      = 1.0,
 		sprite     = Sprite.Sword,
 		sort_depth = player.pos.y + 1.0,
