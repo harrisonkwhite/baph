@@ -131,7 +131,7 @@ exec_game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 			zf4_data.exit_game^ = true
 		}
 	} else {
-		level_tick_res := level_tick(&game.level, zf4_data)
+		level_tick_res := level_tick(&game.level, &game.config, zf4_data)
 
 		if level_tick_res == Level_Tick_Result.Go_To_Title {
 			clean_level(&game.level)
@@ -279,6 +279,46 @@ get_input_binding_name :: proc(binding: Input_Binding) -> string {
 	}
 
 	return ""
+}
+
+is_input_down :: proc(binding: ^Input_Binding_Setting, input_state: ^zf4.Input_State) -> bool {
+	if binding.is_mouse {
+		return zf4.is_mouse_button_down(zf4.Mouse_Button_Code(binding.code), input_state)
+	} else {
+		return zf4.is_key_down(zf4.Key_Code(binding.code), input_state)
+	}
+}
+
+is_input_pressed :: proc(
+	binding: ^Input_Binding_Setting,
+	input_state: ^zf4.Input_State,
+	input_state_last: ^zf4.Input_State,
+) -> bool {
+	if binding.is_mouse {
+		return zf4.is_mouse_button_pressed(
+			zf4.Mouse_Button_Code(binding.code),
+			input_state,
+			input_state_last,
+		)
+	} else {
+		return zf4.is_key_pressed(zf4.Key_Code(binding.code), input_state, input_state_last)
+	}
+}
+
+is_input_released :: proc(
+	binding: ^Input_Binding_Setting,
+	input_state: ^zf4.Input_State,
+	input_state_last: ^zf4.Input_State,
+) -> bool {
+	if binding.is_mouse {
+		return zf4.is_mouse_button_released(
+			zf4.Mouse_Button_Code(binding.code),
+			input_state,
+			input_state_last,
+		)
+	} else {
+		return zf4.is_key_released(zf4.Key_Code(binding.code), input_state, input_state_last)
+	}
 }
 
 gen_resolution_opts :: proc(allocator: mem.Allocator) -> []zf4.Vec_2D_I {
