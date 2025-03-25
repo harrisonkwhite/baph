@@ -16,15 +16,36 @@ Enemy_Type :: enum {
 	Ranger,
 }
 
+Enemy_Type_Flag :: enum {
+	Deals_Contact_Damage,
+}
+
+Enemy_Type_Flag_Set :: bit_set[Enemy_Type_Flag]
+
 Enemy_Type_Info :: struct {
-	sprite:   Sprite,
-	hp_limit: int,
+	sprite:      Sprite,
+	hp_limit:    int,
+	flags:       Enemy_Type_Flag_Set,
+	contact_dmg: int, // NOTE: We might want to assert correctness on things like this, e.g. if the flag is set this should be greater than zero.
+	contact_kb:  f32,
 }
 
 // NOTE: Consider accessor function instead.
 ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
-	Enemy_Type.Melee = {sprite = Sprite.Melee_Enemy, hp_limit = 100},
-	Enemy_Type.Ranger = {sprite = Sprite.Melee_Enemy, hp_limit = 100},
+	Enemy_Type.Melee = {
+		sprite = Sprite.Melee_Enemy,
+		hp_limit = 100,
+		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
+		contact_dmg = 1,
+		contact_kb = 8.0,
+	},
+	Enemy_Type.Ranger = {
+		sprite = Sprite.Melee_Enemy,
+		hp_limit = 100,
+		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
+		contact_dmg = 1,
+		contact_kb = 8.0,
+	},
 }
 
 Enemies :: struct {

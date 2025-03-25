@@ -50,6 +50,9 @@ Damage_Info :: struct {
 
 init_level :: proc(level: ^Level) -> bool {
 	assert(level != nil)
+	mem.zero_item(level)
+
+	spawn_player({}, level)
 
 	if !spawn_enemy({}, level) {
 		return false
@@ -69,8 +72,10 @@ level_tick :: proc(
 	// Reset hitboxes.
 	level.hitmasks.active_cnt = 0
 
-	if !update_player(level, game_config, zf4_data) {
-		return Level_Tick_Result.Error
+	if level.player.active {
+		if !update_player(level, game_config, zf4_data) {
+			return Level_Tick_Result.Error
+		}
 	}
 
 	update_enemies(&level.enemies)
@@ -99,6 +104,10 @@ level_tick :: proc(
 				}
 			}
 		}
+	}
+
+	if level.player.active {
+		proc_player_death(&level.player)
 	}
 
 	proc_enemy_deaths(&level.enemies)
@@ -131,8 +140,10 @@ render_level :: proc(level: ^Level, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 	render_tasks: [dynamic]Level_Layered_Render_Task
 	render_tasks.allocator = context.temp_allocator
 
-	if !append_player_level_render_tasks(&render_tasks, &level.player) {
-		return false
+	if level.player.active {
+		if !append_player_level_render_tasks(&render_tasks, &level.player) {
+			return false
+		}
 	}
 
 	if !append_enemy_level_render_tasks(&render_tasks, &level.enemies) {

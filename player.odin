@@ -1,11 +1,13 @@
 package sanctus
 
 import "core:math"
+import "core:mem"
 import "zf4"
 
 PLAYER_MOVE_SPD :: 3.0
 PLAYER_VEL_LERP_FACTOR :: 0.2
-PLAYER_RENDER_TASK_CNT :: 2
+PLAYER_HP_LIMIT :: 100
+PLAYER_INV_TIME_LIMIT :: 30
 PLAYER_SWORD_DMG :: 10
 PLAYER_SWORD_KNOCKBACK: f32 : 6.0
 PLAYER_SWORD_HITBOX_SIZE :: 32
@@ -15,8 +17,11 @@ PLAYER_SWORD_ROT_OFFS: f32 : 130.0 * math.RAD_PER_DEG
 PLAYER_SWORD_ROT_OFFS_LERP: f32 : 0.4
 
 Player :: struct {
+	active:                       bool,
 	pos:                          zf4.Vec_2D,
 	vel:                          zf4.Vec_2D,
+	hp:                           int,
+	inv_time:                     int,
 	sword_rot_base:               f32,
 	sword_rot_offs:               f32,
 	sword_rot_offs_axis_positive: bool,
@@ -27,6 +32,8 @@ update_player :: proc(
 	game_config: ^Game_Config,
 	zf4_data: ^zf4.Game_Tick_Func_Data,
 ) -> bool {
+	assert(level.player.active)
+
 	//
 	// Movement
 	//
@@ -101,19 +108,71 @@ update_player :: proc(
 	level.player.sword_rot_offs +=
 		(sword_rot_offs_dest - level.player.sword_rot_offs) * PLAYER_SWORD_ROT_OFFS_LERP
 
+	//
+	// Processing Enemy Contacts
+	//
+	if level.player.inv_time > 0 {
+		level.player.inv_time -= 1
+	} else {
+		player_collider := gen_player_damage_collider(level.player.pos)
+
+		enemy_type_infos := ENEMY_TYPE_INFOS
+
+		for i in 0 ..< ENEMY_LIMIT {
+			if !level.enemies.activity[i] {
+				continue
+			}
+
+			enemy := &level.enemies.buf[i]
+			enemy_type_info := enemy_type_infos[enemy.type]
+
+			if Enemy_Type_Flag.Deals_Contact_Damage not_in enemy_type_info.flags {
+				continue
+			}
+
+			enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
+
+			if zf4.do_rects_inters(player_collider, enemy_dmg_collider) {
+				kb_dir := zf4.calc_normal_or_zero(level.player.pos - enemy.pos)
+				kb := kb_dir * enemy_type_info.contact_kb
+
+				damage_player(&level.player, {enemy_type_info.contact_dmg, kb})
+
+				break
+			}
+		}
+	}
+
 	return true
+}
+
+proc_player_death :: proc(player: ^Player) {
+	assert(player != nil)
+	assert(player.active)
+
+	if player.hp == 0 {
+		player.active = false
+	}
 }
 
 append_player_level_render_tasks :: proc(
 	tasks: ^[dynamic]Level_Layered_Render_Task,
 	player: ^Player,
 ) -> bool {
+	assert(player.active)
+
+	character_alpha: f32 = 1.0
+
+	if player.inv_time > 0 {
+		character_alpha = player.inv_time % 2 == 0 ? 0.5 : 0.7
+	}
+
 	character_task := Level_Layered_Render_Task {
 		pos        = player.pos,
 		origin     = {0.5, 0.5},
 		scale      = {1.0, 1.0},
 		rot        = 0.0,
-		alpha      = 1.0,
+		alpha      = character_alpha,
 		sprite     = Sprite.Player,
 		sort_depth = player.pos.y,
 	}
@@ -141,30 +200,26 @@ append_player_level_render_tasks :: proc(
 	return true
 }
 
-/*player_level_render_event :: proc(
-	level: ^Level,
-	rendering_context: ^zf4.Rendering_Context,
-	textures: ^zf4.Textures,
-) {
-	// Render the character.
-	zf4.render_texture(
-		rendering_context,
-		int(Texture.All),
-		textures,
-		SPRITE_SRC_RECTS[int(Sprite.Player)],
-		level.player.pos,
-	)
+spawn_player :: proc(pos: zf4.Vec_2D, level: ^Level) {
+	assert(!level.player.active)
+	mem.zero_item(&level.player)
+	level.player.active = true
+	level.player.pos = pos
+	level.player.hp = PLAYER_HP_LIMIT
+}
 
-	// Render the sword.
-	zf4.render_texture(
-		rendering_context,
-		int(Texture.All),
-		textures,
-		SPRITE_SRC_RECTS[int(Sprite.Sword)],
-		level.player.pos,
-		level.player.sword_rot,
-	)
-}*/
+can_damage_player :: proc(player: ^Player) -> bool {
+	return player.inv_time == 0
+}
+
+damage_player :: proc(player: ^Player, dmg_info: Damage_Info) {
+	assert(can_damage_player(player))
+	assert(dmg_info.dmg > 0)
+
+	player.vel += dmg_info.kb
+	player.hp = max(player.hp - dmg_info.dmg, 0)
+	player.inv_time = PLAYER_INV_TIME_LIMIT
+}
 
 gen_player_damage_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {
 	return gen_collider_from_sprite(Sprite.Player, player_pos)

@@ -86,6 +86,7 @@ main :: proc() {
 		user_mem_size                = size_of(Game),
 		user_mem_alignment           = align_of(Game),
 		window_init_size             = {1280, 720},
+		window_min_size              = {1280, 720},
 		window_title                 = "Sanctus",
 		tex_cnt                      = len(Texture),
 		tex_index_to_file_path_func  = texture_index_to_file_path,
@@ -139,6 +140,8 @@ exec_game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 			init_title_screen(&game.title_screen, &game.config)
 		}
 	}
+
+	zf4_data.fullscreen_state_ideal^ = game.config.fullscreen
 
 	return true
 }

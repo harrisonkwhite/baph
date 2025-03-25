@@ -95,6 +95,9 @@ Options_Menu_Category :: enum {
 }
 
 init_title_screen :: proc(ts: ^Title_Screen, game_config: ^Game_Config) -> bool {
+	assert(ts != nil)
+	assert(game_config != nil)
+
 	mem.zero_item(ts)
 
 	arena_buf_alloc_err: mem.Allocator_Error
