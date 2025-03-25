@@ -9,6 +9,7 @@ Game :: struct {
 	in_level:     bool,
 	title_screen: Title_Screen,
 	level:        Level,
+	mouse_pos:    zf4.Vec_2D, // TEMP? Just pass input state into render function?
 }
 
 Game_Config :: struct {
@@ -88,6 +89,7 @@ main :: proc() {
 		window_init_size             = {1280, 720},
 		window_min_size              = {1280, 720},
 		window_title                 = "Sanctus",
+		window_flags                 = {zf4.Window_Flag.Resizable, zf4.Window_Flag.Hide_Cursor},
 		tex_cnt                      = len(Texture),
 		tex_index_to_file_path_func  = texture_index_to_file_path,
 		font_cnt                     = len(Font),
@@ -120,6 +122,8 @@ init_game :: proc(zf4_data: ^zf4.Game_Init_Func_Data) -> bool {
 
 exec_game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 	game := (^Game)(zf4_data.user_mem)
+
+	game.mouse_pos = zf4_data.input_state.mouse_pos
 
 	if !game.in_level {
 		ts_tick_res := title_screen_tick(&game.title_screen, &game.config, zf4_data)
@@ -160,6 +164,14 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 			return false
 		}
 	}
+
+	zf4.render_texture(
+		&zf4_data.rendering_context,
+		int(Texture.All),
+		zf4_data.textures,
+		SPRITE_SRC_RECTS[Sprite.Cursor],
+		game.mouse_pos,
+	)
 
 	zf4.flush(&zf4_data.rendering_context)
 

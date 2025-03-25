@@ -39,12 +39,6 @@ Level_Tick_Result :: enum {
 	Error,
 }
 
-/*Level_Render_Event :: proc(
-	level: ^Level,
-	rendering_context: ^zf4.Rendering_Context,
-	textures: ^zf4.Textures,
-)*/
-
 Hitmasks :: struct {
 	active_cnt: int,
 	colliders:  [HITMASK_LIMIT]zf4.Poly,
