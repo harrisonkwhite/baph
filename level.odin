@@ -7,6 +7,7 @@ import "core:slice"
 import "zf4"
 
 HITMASK_LIMIT :: 64
+
 DAMAGE_TEXT_LIMIT :: 64
 DAMAGE_TEXT_FONT :: Font.EB_Garamond_40
 DAMAGE_TEXT_SLOWDOWN_MULT :: 0.9
@@ -14,11 +15,12 @@ DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE :: 0.2
 DAMAGE_TEXT_FADE_MULT :: 0.8
 
 Level :: struct {
-	player:    Player,
-	enemies:   Enemies,
-	hitmasks:  Hitmasks,
-	dmg_texts: [DAMAGE_TEXT_LIMIT]Damage_Text,
-	cam:       Camera,
+	player:           Player,
+	enemies:          Enemies,
+	enemy_spawn_time: int,
+	hitmasks:         Hitmasks,
+	dmg_texts:        [DAMAGE_TEXT_LIMIT]Damage_Text,
+	cam:              Camera,
 }
 
 Level_Layered_Render_Task :: struct {
@@ -67,10 +69,6 @@ init_level :: proc(level: ^Level) -> bool {
 
 	spawn_player({}, level)
 
-	if !spawn_enemy({}, level) {
-		return false
-	}
-
 	return true
 }
 
@@ -90,6 +88,8 @@ level_tick :: proc(
 			return Level_Tick_Result.Error
 		}
 	}
+
+	proc_enemy_spawning(level)
 
 	update_enemies(&level.enemies)
 

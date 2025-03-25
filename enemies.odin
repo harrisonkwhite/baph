@@ -1,8 +1,12 @@
 package sanctus
 
+import "core:math"
+import "core:math/rand"
 import "zf4"
 
 ENEMY_LIMIT :: 256
+ENEMY_SPAWN_INTERVAL :: 200
+ENEMY_SPAWN_DIST_RANGE: [2]f32 : {256.0, 400.0}
 
 Enemy :: struct {
 	pos:  zf4.Vec_2D,
@@ -63,6 +67,21 @@ update_enemies :: proc(enemies: ^Enemies) {
 
 		enemy.vel *= 0.8
 		enemy.pos += enemy.vel
+	}
+}
+
+proc_enemy_spawning :: proc(level: ^Level) {
+	if level.enemy_spawn_time < ENEMY_SPAWN_INTERVAL {
+		level.enemy_spawn_time += 1
+	} else {
+		spawn_offs_dir := rand.float32_range(0.0, math.PI * 2.0)
+		spawn_offs_dist := rand.float32_range(ENEMY_SPAWN_DIST_RANGE[0], ENEMY_SPAWN_DIST_RANGE[1])
+		spawn_pos := level.cam.pos + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
+
+		// NOTE: Not handling fail case here.
+		spawn_enemy(Enemy_Type.Melee, spawn_pos, level)
+
+		level.enemy_spawn_time = 0
 	}
 }
 
@@ -129,14 +148,14 @@ render_enemy_hp_bars :: proc(
 
 		enemy := &enemies.buf[i]
 
-		enemy_size := zf4.calc_rect_i_size(sprite_src_rects[i])
+		enemy_size := zf4.calc_rect_i_size(sprite_src_rects[type_infos[enemy.type].sprite])
 
 		hp_bar_pos := camera_to_display_pos(
 			enemy.pos + {0.0, (f32(enemy_size.y) / 2.0) + 8.0},
 			cam.pos,
 			rendering_context.display_size,
 		)
-		hp_bar_size := zf4.Vec_2D{f32(enemy_size.x) + 8.0, 4.0}
+		hp_bar_size := zf4.Vec_2D{f32(enemy_size.x) - 2.0, 2.0} * CAMERA_SCALE
 		hp_bar_rect := zf4.Rect {
 			hp_bar_pos.x - (hp_bar_size.x / 2.0),
 			hp_bar_pos.y - (hp_bar_size.y / 2.0),
@@ -147,19 +166,22 @@ render_enemy_hp_bars :: proc(
 		zf4.render_bar_hor(
 			rendering_context,
 			hp_bar_rect,
-			f32(enemy.hp) / f32(type_infos[i].hp_limit),
+			f32(enemy.hp) / f32(type_infos[enemy.type].hp_limit),
 			zf4.WHITE.rgb,
 			zf4.BLACK.rgb,
 		)
 	}
 }
 
-spawn_enemy :: proc(pos: zf4.Vec_2D, level: ^Level) -> bool {
+spawn_enemy :: proc(type: Enemy_Type, pos: zf4.Vec_2D, level: ^Level) -> bool {
+	type_infos := ENEMY_TYPE_INFOS
+
 	for i in 0 ..< ENEMY_LIMIT {
 		if !level.enemies.activity[i] {
 			level.enemies.buf[i] = {
-				pos = pos,
-				hp  = 100, // TEMP
+				pos  = pos,
+				hp   = type_infos[type].hp_limit,
+				type = type,
 			}
 
 			level.enemies.activity[i] = true
