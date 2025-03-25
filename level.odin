@@ -1,18 +1,24 @@
 package sanctus
 
 import "core:fmt"
-import "core:math"
+import "core:math/rand"
 import "core:mem"
 import "core:slice"
 import "zf4"
 
 HITMASK_LIMIT :: 64
+DAMAGE_TEXT_LIMIT :: 64
+DAMAGE_TEXT_FONT :: Font.EB_Garamond_40
+DAMAGE_TEXT_SLOWDOWN_MULT :: 0.9
+DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE :: 0.2
+DAMAGE_TEXT_FADE_MULT :: 0.8
 
 Level :: struct {
-	player:   Player,
-	enemies:  Enemies,
-	hitmasks: Hitmasks,
-	cam:      Camera,
+	player:    Player,
+	enemies:   Enemies,
+	hitmasks:  Hitmasks,
+	dmg_texts: [DAMAGE_TEXT_LIMIT]Damage_Text,
+	cam:       Camera,
 }
 
 Level_Layered_Render_Task :: struct {
@@ -48,6 +54,13 @@ Damage_Info :: struct {
 	kb:  zf4.Vec_2D,
 }
 
+Damage_Text :: struct {
+	dmg:   int,
+	pos:   zf4.Vec_2D,
+	vel_y: f32,
+	alpha: f32,
+}
+
 init_level :: proc(level: ^Level) -> bool {
 	assert(level != nil)
 	mem.zero_item(level)
@@ -80,28 +93,28 @@ level_tick :: proc(
 
 	update_enemies(&level.enemies)
 
-	{
-		for i in 0 ..< level.hitmasks.active_cnt {
-			hm_collider := level.hitmasks.colliders[i]
+	for i in 0 ..< level.hitmasks.active_cnt {
+		hm_collider := level.hitmasks.colliders[i]
 
-			player_dmg_collider := gen_player_damage_collider(level.player.pos)
+		player_dmg_collider := gen_player_damage_collider(level.player.pos)
 
-			if zf4.does_poly_inters_with_rect(hm_collider, player_dmg_collider) {
+		if zf4.does_poly_inters_with_rect(hm_collider, player_dmg_collider) {
+		}
+
+		for j in 0 ..< ENEMY_LIMIT {
+			if !level.enemies.activity[j] {
+				continue
 			}
 
-			for j in 0 ..< ENEMY_LIMIT {
-				if !level.enemies.activity[j] {
-					continue
-				}
+			enemy := &level.enemies.buf[j]
 
-				enemy := &level.enemies.buf[j]
+			enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
 
-				enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
-
-				// NOTE: Could cache the collider polygons.
-				if zf4.does_poly_inters_with_rect(hm_collider, enemy_dmg_collider) {
-					damage_enemy(enemy, level.hitmasks.dmg_infos[i])
-				}
+			// NOTE: Could cache the collider polygons.
+			if zf4.does_poly_inters_with_rect(hm_collider, enemy_dmg_collider) {
+				dmg_info := &level.hitmasks.dmg_infos[i]
+				damage_enemy(enemy, dmg_info^)
+				spawn_damage_text(level, dmg_info.dmg, enemy.pos)
 			}
 		}
 	}
@@ -118,6 +131,16 @@ level_tick :: proc(
 		zf4_data.input_state.mouse_pos,
 		zf4_data.window_state_cache.size,
 	)
+
+	// Update damage text.
+	for &dt in level.dmg_texts {
+		dt.pos.y += dt.vel_y
+		dt.vel_y *= DAMAGE_TEXT_SLOWDOWN_MULT
+
+		if abs(dt.vel_y) <= DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE {
+			dt.alpha *= 0.8
+		}
+	}
 
 	// Handle title screen change request.
 	if zf4.is_key_pressed(zf4.Key_Code.Escape, zf4_data.input_state, zf4_data.input_state_last) {
@@ -191,6 +214,20 @@ render_level :: proc(level: ^Level, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		zf4_data.textures,
 	)
 
+	for dt in level.dmg_texts {
+		dt_str_buf: [16]u8
+		dt_str := fmt.bprintf(dt_str_buf[:], "%d", -dt.dmg)
+
+		zf4.render_str(
+			&zf4_data.rendering_context,
+			dt_str,
+			int(DAMAGE_TEXT_FONT),
+			zf4_data.fonts,
+			camera_to_display_pos(dt.pos, level.cam.pos, zf4_data.rendering_context.display_size),
+			blend = {1.0, 1.0, 1.0, dt.alpha},
+		)
+	}
+
 	return true
 }
 
@@ -243,5 +280,32 @@ spawn_hitmask_quad :: proc(
 	hitmasks.active_cnt += 1
 
 	return true
+}
+
+spawn_damage_text :: proc(
+	level: ^Level,
+	dmg: int,
+	pos: zf4.Vec_2D,
+	vel_y_range: [2]f32 = {-6.0, -4.0},
+) -> bool {
+	assert(level != nil)
+	assert(dmg > 0)
+	assert(vel_y_range[0] <= vel_y_range[1])
+	assert(vel_y_range[0] <= 0.0 && vel_y_range[1] <= 0.0)
+
+	for &dt in level.dmg_texts {
+		if dt.alpha <= 0.01 {
+			dt = {
+				dmg   = dmg,
+				pos   = pos,
+				vel_y = rand.float32_range(vel_y_range[0], vel_y_range[1]),
+				alpha = 1.0,
+			}
+
+			return true
+		}
+	}
+
+	return false
 }
 

@@ -134,9 +134,15 @@ update_player :: proc(
 
 			if zf4.do_rects_inters(player_collider, enemy_dmg_collider) {
 				kb_dir := zf4.calc_normal_or_zero(level.player.pos - enemy.pos)
-				kb := kb_dir * enemy_type_info.contact_kb
 
-				damage_player(&level.player, {enemy_type_info.contact_dmg, kb})
+				dmg_info := Damage_Info {
+					dmg = enemy_type_info.contact_dmg,
+					kb  = kb_dir * enemy_type_info.contact_kb,
+				}
+
+				damage_player(&level.player, dmg_info)
+
+				spawn_damage_text(level, dmg_info.dmg, level.player.pos)
 
 				break
 			}
