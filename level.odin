@@ -1,6 +1,7 @@
 package sanctus
 
 import "core:fmt"
+import "core:math"
 import "core:math/rand"
 import "core:mem"
 import "core:slice"
@@ -15,12 +16,13 @@ DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE :: 0.2
 DAMAGE_TEXT_FADE_MULT :: 0.8
 
 Level :: struct {
-	player:           Player,
-	enemies:          Enemies,
-	enemy_spawn_time: int,
-	hitmasks:         Hitmasks,
-	dmg_texts:        [DAMAGE_TEXT_LIMIT]Damage_Text,
-	cam:              Camera,
+	player:             Player,
+	enemies:            Enemies,
+	enemy_spawn_time:   int,
+	hitmasks:           [HITMASK_LIMIT]Hitmask,
+	hitmask_active_cnt: int,
+	dmg_texts:          [DAMAGE_TEXT_LIMIT]Damage_Text,
+	cam:                Camera,
 }
 
 Level_Layered_Render_Task :: struct {
@@ -39,11 +41,18 @@ Level_Tick_Result :: enum {
 	Error,
 }
 
-Hitmasks :: struct {
-	active_cnt: int,
-	colliders:  [HITMASK_LIMIT]zf4.Poly,
-	dmg_infos:  [HITMASK_LIMIT]Damage_Info,
+Hitmask :: struct {
+	collider: zf4.Poly,
+	dmg_info: Damage_Info,
+	flags:    Hitmask_Flag_Set,
 }
+
+Hitmask_Flag :: enum {
+	Damage_Player,
+	Damage_Enemy,
+}
+
+Hitmask_Flag_Set :: bit_set[Hitmask_Flag]
 
 Damage_Info :: struct {
 	dmg: int,
@@ -71,62 +80,264 @@ level_tick :: proc(
 	game_config: ^Game_Config,
 	zf4_data: ^zf4.Game_Tick_Func_Data,
 ) -> Level_Tick_Result {
-	assert(level != nil)
-	assert(zf4_data != nil)
+	enemy_type_infos := ENEMY_TYPE_INFOS
 
-	// Reset hitboxes.
-	level.hitmasks.active_cnt = 0
-
-	if level.player.active {
-		if !update_player(level, game_config, zf4_data) {
-			return Level_Tick_Result.Error
-		}
-	}
-
-	proc_enemy_spawning(level)
-
-	update_enemies(&level.enemies)
-
-	for i in 0 ..< level.hitmasks.active_cnt {
-		hm_collider := level.hitmasks.colliders[i]
-
-		player_dmg_collider := gen_player_damage_collider(level.player.pos)
-
-		if zf4.does_poly_inters_with_rect(hm_collider, player_dmg_collider) {
-		}
-
-		for j in 0 ..< ENEMY_LIMIT {
-			if !level.enemies.activity[j] {
-				continue
-			}
-
-			enemy := &level.enemies.buf[j]
-
-			enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
-
-			// NOTE: Could cache the collider polygons.
-			if zf4.does_poly_inters_with_rect(hm_collider, enemy_dmg_collider) {
-				dmg_info := &level.hitmasks.dmg_infos[i]
-				damage_enemy(enemy, dmg_info^)
-				spawn_damage_text(level, dmg_info.dmg, enemy.pos)
-			}
-		}
-	}
-
-	if level.player.active {
-		proc_player_death(&level.player)
-	}
-
-	proc_enemy_deaths(&level.enemies)
-
-	update_camera(
-		&level.cam,
-		level.player.pos,
+	mouse_cam_pos := display_to_camera_pos(
 		zf4_data.input_state.mouse_pos,
+		level.cam.pos,
 		zf4_data.window_state_cache.size,
 	)
 
-	// Update damage text.
+	level.hitmask_active_cnt = 0
+
+	//
+	// Enemy Spawning
+	//
+	if level.enemy_spawn_time < ENEMY_SPAWN_INTERVAL {
+		level.enemy_spawn_time += 1
+	} else {
+		spawn_offs_dir := rand.float32_range(0.0, math.PI * 2.0)
+		spawn_offs_dist := rand.float32_range(ENEMY_SPAWN_DIST_RANGE[0], ENEMY_SPAWN_DIST_RANGE[1])
+		spawn_pos := level.cam.pos + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
+
+		// NOTE: Not handling fail case here.
+		spawn_enemy(Enemy_Type.Melee, spawn_pos, level)
+
+		level.enemy_spawn_time = 0
+	}
+
+	//
+	// Player
+	//
+	if level.player.active {
+		level.player.shielding = is_input_down(
+			&game_config.input_binding_settings[Input_Binding.Shield],
+			zf4_data.input_state,
+		)
+
+		key_right := is_input_down(
+			&game_config.input_binding_settings[Input_Binding.Move_Right],
+			zf4_data.input_state,
+		)
+
+		key_left := is_input_down(
+			&game_config.input_binding_settings[Input_Binding.Move_Left],
+			zf4_data.input_state,
+		)
+
+		key_down := is_input_down(
+			&game_config.input_binding_settings[Input_Binding.Move_Down],
+			zf4_data.input_state,
+		)
+
+		key_up := is_input_down(
+			&game_config.input_binding_settings[Input_Binding.Move_Up],
+			zf4_data.input_state,
+		)
+
+		move_axis := zf4.Vec_2D {
+			f32(i32(key_right) - i32(key_left)),
+			f32(i32(key_down) - i32(key_up)),
+		}
+
+		move_dir := zf4.calc_normal_or_zero(move_axis)
+
+		vel_lerp_targ :=
+			move_dir *
+			PLAYER_MOVE_SPD *
+			(level.player.shielding ? PLAYER_SHIELD_MOVE_SPD_MULT : 1.0)
+		level.player.vel = math.lerp(level.player.vel, vel_lerp_targ, f32(PLAYER_VEL_LERP_FACTOR))
+
+		level.player.pos += level.player.vel
+
+		mouse_dir_vec := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
+
+		level.player.aim_dir = zf4.calc_dir(mouse_dir_vec)
+
+		if !level.player.shielding {
+			if is_input_pressed(
+				&game_config.input_binding_settings[Input_Binding.Attack],
+				zf4_data.input_state,
+				zf4_data.input_state_last,
+			) {
+				attack_dir := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
+
+				if !spawn_hitmask_quad(
+					level.player.pos + (attack_dir * PLAYER_SWORD_HITBOX_OFFS_DIST),
+					{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
+					{dmg = PLAYER_SWORD_DMG, kb = attack_dir * PLAYER_SWORD_KNOCKBACK},
+					{Hitmask_Flag.Damage_Enemy},
+					level,
+				) {
+					return Level_Tick_Result.Error
+				}
+
+				level.player.sword_rot_offs_axis_positive =
+				!level.player.sword_rot_offs_axis_positive
+			}
+		}
+
+		sword_rot_offs_dest :=
+			level.player.sword_rot_offs_axis_positive ? PLAYER_SWORD_ROT_OFFS : -PLAYER_SWORD_ROT_OFFS
+
+		level.player.sword_rot_offs +=
+			(sword_rot_offs_dest - level.player.sword_rot_offs) * PLAYER_SWORD_ROT_OFFS_LERP
+
+		if level.player.inv_time > 0 {
+			level.player.inv_time -= 1
+		}
+	}
+
+	//
+	// Enemy AI
+	//
+	for i in 0 ..< ENEMY_LIMIT {
+		if !level.enemies.activity[i] {
+			continue
+		}
+
+		enemy := &level.enemies.buf[i]
+
+		enemy.vel *= 0.8
+		enemy.pos += enemy.vel
+
+		if enemy.attack_time < 60 {
+			enemy.attack_time += 1
+		} else {
+			attack_dir := zf4.calc_normal_or_zero(level.player.pos - enemy.pos)
+			ATTACK_HITBOX_OFFS_DIST :: 32.0
+			ATTACK_KNOCKBACK :: 6.0
+
+			if !spawn_hitmask_quad(
+				enemy.pos + (attack_dir * ATTACK_HITBOX_OFFS_DIST),
+				{32.0, 32.0},
+				{dmg = 1, kb = attack_dir * ATTACK_KNOCKBACK},
+				{Hitmask_Flag.Damage_Player},
+				level,
+			) {
+				return Level_Tick_Result.Error
+			}
+
+			enemy.attack_time = 0
+		}
+	}
+
+	//
+	// Player and Enemy Collisions
+	//
+	for i in 0 ..< ENEMY_LIMIT {
+		if !level.enemies.activity[i] {
+			continue
+		}
+
+		enemy := &level.enemies.buf[i]
+		enemy_type_info := enemy_type_infos[enemy.type]
+
+		if Enemy_Type_Flag.Deals_Contact_Damage not_in enemy_type_info.flags {
+			continue
+		}
+
+		enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
+
+		if zf4.do_rects_inters(gen_player_damage_collider(level.player.pos), enemy_dmg_collider) {
+			kb_dir := zf4.calc_normal_or_zero(level.player.pos - enemy.pos)
+
+			dmg_info := Damage_Info {
+				dmg = enemy_type_info.contact_dmg,
+				kb  = kb_dir * enemy_type_info.contact_kb,
+			}
+
+			damage_player(level, dmg_info)
+
+			break
+		}
+	}
+
+	//
+	// Hitmask Collisions
+	//
+	for i in 0 ..< level.hitmask_active_cnt {
+		hm := &level.hitmasks[i]
+
+		if Hitmask_Flag.Damage_Player in hm.flags {
+			if zf4.does_poly_inters_with_rect(
+				hm.collider,
+				gen_player_damage_collider(level.player.pos),
+			) {
+				damage_player(level, hm.dmg_info)
+			}
+		}
+
+		if Hitmask_Flag.Damage_Enemy in hm.flags {
+			for j in 0 ..< ENEMY_LIMIT {
+				if !level.enemies.activity[j] {
+					continue
+				}
+
+				enemy := &level.enemies.buf[j]
+
+				enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
+
+				// NOTE: Could cache the collider polygons.
+				if zf4.does_poly_inters_with_rect(hm.collider, enemy_dmg_collider) {
+					damage_enemy(j, level, hm.dmg_info)
+					spawn_damage_text(level, hm.dmg_info.dmg, enemy.pos)
+				}
+			}
+		}
+	}
+
+	//
+	// Player Death
+	//
+	assert(level.player.hp >= 0)
+
+	if level.player.hp == 0 {
+		level.player.active = false
+	}
+
+	//
+	// Enemy Death
+	//
+	for i in 0 ..< ENEMY_LIMIT {
+		if !level.enemies.activity[i] {
+			continue
+		}
+
+		enemy := &level.enemies.buf[i]
+
+		assert(enemy.hp >= 0)
+
+		if enemy.hp == 0 {
+			level.enemies.activity[i] = false
+		}
+	}
+
+	//
+	// Camera
+	//
+	{
+		mouse_cam_pos := display_to_camera_pos(
+			zf4_data.input_state.mouse_pos,
+			level.cam.pos,
+			zf4_data.window_state_cache.size,
+		)
+		player_to_mouse_cam_pos_dist := zf4.calc_dist(level.player.pos, mouse_cam_pos)
+		player_to_mouse_cam_pos_dir := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
+
+		look_dist :=
+			CAMERA_LOOK_DIST_LIMIT *
+			min(player_to_mouse_cam_pos_dist / CAMERA_LOOK_DIST_SCALAR_DIST, 1.0)
+
+		look_offs := player_to_mouse_cam_pos_dir * look_dist
+
+		dest := level.player.pos + look_offs
+		level.cam.pos = math.lerp(level.cam.pos, dest, f32(CAMERA_POS_LERP_FACTOR))
+	}
+
+	//
+	// Damage Text
+	//
 	for &dt in level.dmg_texts {
 		dt.pos.y += dt.vel_y
 		dt.vel_y *= DAMAGE_TEXT_SLOWDOWN_MULT
@@ -190,8 +401,8 @@ render_level :: proc(level: ^Level, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		)
 	}
 
-	for i in 0 ..< level.hitmasks.active_cnt {
-		zf4.render_poly_outline(&zf4_data.rendering_context, level.hitmasks.colliders[i], zf4.RED)
+	for i in 0 ..< level.hitmask_active_cnt {
+		zf4.render_poly_outline(&zf4_data.rendering_context, level.hitmasks[i].collider, zf4.RED)
 	}
 
 	zf4.flush(&zf4_data.rendering_context)
@@ -248,30 +459,30 @@ spawn_hitmask_quad :: proc(
 	pos: zf4.Vec_2D,
 	size: zf4.Vec_2D,
 	dmg_info: Damage_Info,
-	hitmasks: ^Hitmasks,
-	allocator := context.allocator, // NOTE: Should this be paired with the hitmasks struct?
+	flags: Hitmask_Flag_Set,
+	level: ^Level,
+	allocator := context.allocator,
 ) -> bool {
 	assert(size.x > 0.0 && size.y > 0.0)
-	assert(hitmasks.active_cnt >= 0 && hitmasks.active_cnt <= HITMASK_LIMIT)
+	assert(level.hitmask_active_cnt >= 0 && level.hitmask_active_cnt <= HITMASK_LIMIT)
+	assert(flags != {})
 
-	if (hitmasks.active_cnt == HITMASK_LIMIT) {
+	if (level.hitmask_active_cnt == HITMASK_LIMIT) {
 		return false
 	}
 
+	hm := &level.hitmasks[level.hitmask_active_cnt]
+
 	collider_allocated: bool
-	hitmasks.colliders[hitmasks.active_cnt], collider_allocated = zf4.alloc_quad_poly(
-		pos,
-		size,
-		{0.5, 0.5},
-		allocator,
-	)
+	hm.collider, collider_allocated = zf4.alloc_quad_poly(pos, size, {0.5, 0.5}, allocator)
 
 	if !collider_allocated {
 		return false
 	}
 
-	hitmasks.dmg_infos[hitmasks.active_cnt] = dmg_info
-	hitmasks.active_cnt += 1
+	hm.dmg_info = dmg_info
+	hm.flags = flags
+	level.hitmask_active_cnt += 1
 
 	return true
 }

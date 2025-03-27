@@ -30,144 +30,6 @@ Player :: struct {
 	sword_rot_offs_axis_positive: bool,
 }
 
-update_player :: proc(
-	level: ^Level,
-	game_config: ^Game_Config,
-	zf4_data: ^zf4.Game_Tick_Func_Data,
-) -> bool {
-	assert(level.player.active)
-
-	level.player.shielding = is_input_down(
-		&game_config.input_binding_settings[Input_Binding.Shield],
-		zf4_data.input_state,
-	)
-
-	//
-	// Movement
-	//
-	key_right := is_input_down(
-		&game_config.input_binding_settings[Input_Binding.Move_Right],
-		zf4_data.input_state,
-	)
-
-	key_left := is_input_down(
-		&game_config.input_binding_settings[Input_Binding.Move_Left],
-		zf4_data.input_state,
-	)
-
-	key_down := is_input_down(
-		&game_config.input_binding_settings[Input_Binding.Move_Down],
-		zf4_data.input_state,
-	)
-
-	key_up := is_input_down(
-		&game_config.input_binding_settings[Input_Binding.Move_Up],
-		zf4_data.input_state,
-	)
-
-	move_axis := zf4.Vec_2D{f32(i32(key_right) - i32(key_left)), f32(i32(key_down) - i32(key_up))}
-
-	move_dir := zf4.calc_normal_or_zero(move_axis)
-
-	vel_lerp_targ :=
-		move_dir * PLAYER_MOVE_SPD * (level.player.shielding ? PLAYER_SHIELD_MOVE_SPD_MULT : 1.0)
-	level.player.vel = math.lerp(level.player.vel, vel_lerp_targ, f32(PLAYER_VEL_LERP_FACTOR))
-
-	level.player.pos += level.player.vel
-
-	//
-	// Attacking
-	//
-	mouse_cam_pos := display_to_camera_pos(
-		zf4_data.input_state.mouse_pos,
-		level.cam.pos,
-		zf4_data.window_state_cache.size,
-	)
-
-	mouse_dir_vec := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
-
-	level.player.aim_dir = zf4.calc_dir(mouse_dir_vec)
-
-	if !level.player.shielding {
-		if is_input_pressed(
-			&game_config.input_binding_settings[Input_Binding.Attack],
-			zf4_data.input_state,
-			zf4_data.input_state_last,
-		) {
-			attack_dir := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
-
-			if !spawn_hitmask_quad(
-				level.player.pos + (attack_dir * PLAYER_SWORD_HITBOX_OFFS_DIST),
-				{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
-				{dmg = PLAYER_SWORD_DMG, kb = attack_dir * PLAYER_SWORD_KNOCKBACK},
-				&level.hitmasks,
-			) {
-				return false
-			}
-
-			level.player.sword_rot_offs_axis_positive = !level.player.sword_rot_offs_axis_positive
-		}
-	}
-
-	sword_rot_offs_dest :=
-		level.player.sword_rot_offs_axis_positive ? PLAYER_SWORD_ROT_OFFS : -PLAYER_SWORD_ROT_OFFS
-
-	level.player.sword_rot_offs +=
-		(sword_rot_offs_dest - level.player.sword_rot_offs) * PLAYER_SWORD_ROT_OFFS_LERP
-
-	//
-	// Processing Enemy Contacts
-	//
-	if level.player.inv_time > 0 {
-		level.player.inv_time -= 1
-	} else {
-		player_collider := gen_player_damage_collider(level.player.pos)
-
-		enemy_type_infos := ENEMY_TYPE_INFOS
-
-		for i in 0 ..< ENEMY_LIMIT {
-			if !level.enemies.activity[i] {
-				continue
-			}
-
-			enemy := &level.enemies.buf[i]
-			enemy_type_info := enemy_type_infos[enemy.type]
-
-			if Enemy_Type_Flag.Deals_Contact_Damage not_in enemy_type_info.flags {
-				continue
-			}
-
-			enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
-
-			if zf4.do_rects_inters(player_collider, enemy_dmg_collider) {
-				kb_dir := zf4.calc_normal_or_zero(level.player.pos - enemy.pos)
-
-				dmg_info := Damage_Info {
-					dmg = enemy_type_info.contact_dmg,
-					kb  = kb_dir * enemy_type_info.contact_kb,
-				}
-
-				damage_player(&level.player, dmg_info)
-
-				spawn_damage_text(level, dmg_info.dmg, level.player.pos)
-
-				break
-			}
-		}
-	}
-
-	return true
-}
-
-proc_player_death :: proc(player: ^Player) {
-	assert(player != nil)
-	assert(player.active)
-
-	if player.hp == 0 {
-		player.active = false
-	}
-}
-
 append_player_level_render_tasks :: proc(
 	tasks: ^[dynamic]Level_Layered_Render_Task,
 	player: ^Player,
@@ -235,17 +97,20 @@ spawn_player :: proc(pos: zf4.Vec_2D, level: ^Level) {
 	level.player.hp = PLAYER_HP_LIMIT
 }
 
-can_damage_player :: proc(player: ^Player) -> bool {
-	return player.inv_time == 0
-}
+damage_player :: proc(level: ^Level, dmg_info: Damage_Info) {
+	assert(level.player.inv_time >= 0)
 
-damage_player :: proc(player: ^Player, dmg_info: Damage_Info) {
-	assert(can_damage_player(player))
+	if level.player.inv_time > 0 {
+		return
+	}
+
 	assert(dmg_info.dmg > 0)
 
-	player.vel += dmg_info.kb
-	player.hp = max(player.hp - dmg_info.dmg, 0)
-	player.inv_time = PLAYER_INV_TIME_LIMIT
+	level.player.vel += dmg_info.kb
+	level.player.hp = max(level.player.hp - dmg_info.dmg, 0)
+	level.player.inv_time = PLAYER_INV_TIME_LIMIT
+
+	spawn_damage_text(level, dmg_info.dmg, level.player.pos)
 }
 
 gen_player_damage_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {

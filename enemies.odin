@@ -9,10 +9,11 @@ ENEMY_SPAWN_INTERVAL :: 200
 ENEMY_SPAWN_DIST_RANGE: [2]f32 : {256.0, 400.0}
 
 Enemy :: struct {
-	pos:  zf4.Vec_2D,
-	vel:  zf4.Vec_2D,
-	hp:   int,
-	type: Enemy_Type,
+	pos:         zf4.Vec_2D,
+	vel:         zf4.Vec_2D,
+	hp:          int,
+	type:        Enemy_Type,
+	attack_time: int, // TEMP
 }
 
 Enemy_Type :: enum {
@@ -55,50 +56,6 @@ ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
 Enemies :: struct {
 	buf:      [ENEMY_LIMIT]Enemy,
 	activity: [ENEMY_LIMIT]bool, // TEMP: Use a bitset later.
-}
-
-update_enemies :: proc(enemies: ^Enemies) {
-	for i in 0 ..< ENEMY_LIMIT {
-		if !enemies.activity[i] {
-			continue
-		}
-
-		enemy := &enemies.buf[i]
-
-		enemy.vel *= 0.8
-		enemy.pos += enemy.vel
-	}
-}
-
-proc_enemy_spawning :: proc(level: ^Level) {
-	if level.enemy_spawn_time < ENEMY_SPAWN_INTERVAL {
-		level.enemy_spawn_time += 1
-	} else {
-		spawn_offs_dir := rand.float32_range(0.0, math.PI * 2.0)
-		spawn_offs_dist := rand.float32_range(ENEMY_SPAWN_DIST_RANGE[0], ENEMY_SPAWN_DIST_RANGE[1])
-		spawn_pos := level.cam.pos + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
-
-		// NOTE: Not handling fail case here.
-		spawn_enemy(Enemy_Type.Melee, spawn_pos, level)
-
-		level.enemy_spawn_time = 0
-	}
-}
-
-proc_enemy_deaths :: proc(enemies: ^Enemies) {
-	for i in 0 ..< ENEMY_LIMIT {
-		if !enemies.activity[i] {
-			continue
-		}
-
-		enemy := &enemies.buf[i]
-
-		assert(enemy.hp >= 0)
-
-		if enemy.hp == 0 {
-			enemies.activity[i] = false
-		}
-	}
 }
 
 append_enemy_level_render_tasks :: proc(
@@ -193,9 +150,11 @@ spawn_enemy :: proc(type: Enemy_Type, pos: zf4.Vec_2D, level: ^Level) -> bool {
 	return false
 }
 
-damage_enemy :: proc(enemy: ^Enemy, dmg_info: Damage_Info) {
+damage_enemy :: proc(enemy_index: int, level: ^Level, dmg_info: Damage_Info) {
+	assert(level.enemies.activity[enemy_index])
 	assert(dmg_info.dmg > 0)
 
+	enemy := &level.enemies.buf[enemy_index]
 	enemy.vel += dmg_info.kb
 	enemy.hp = max(enemy.hp - dmg_info.dmg, 0)
 }

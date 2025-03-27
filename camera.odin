@@ -14,27 +14,6 @@ Camera :: struct {
 	pos: zf4.Vec_2D,
 }
 
-update_camera :: proc(
-	cam: ^Camera,
-	player_pos: zf4.Vec_2D,
-	mouse_pos: zf4.Vec_2D,
-	display_size: zf4.Vec_2D_I,
-) {
-	mouse_cam_pos := display_to_camera_pos(mouse_pos, cam.pos, display_size)
-	player_to_mouse_cam_pos_dist := zf4.calc_dist(player_pos, mouse_cam_pos)
-	player_to_mouse_cam_pos_dir := zf4.calc_normal_or_zero(mouse_cam_pos - player_pos)
-
-	look_dist :=
-		CAMERA_LOOK_DIST_LIMIT *
-		min(player_to_mouse_cam_pos_dist / CAMERA_LOOK_DIST_SCALAR_DIST, 1.0)
-
-	look_offs := player_to_mouse_cam_pos_dir * look_dist
-
-	dest := player_pos + look_offs
-
-	cam.pos = math.lerp(cam.pos, dest, f32(CAMERA_POS_LERP_FACTOR))
-}
-
 calc_camera_size :: proc(window_size: zf4.Vec_2D_I) -> zf4.Vec_2D {
 	assert(zf4.is_size_i(window_size))
 	return {f32(window_size.x) / CAMERA_SCALE, f32(window_size.y) / CAMERA_SCALE}
