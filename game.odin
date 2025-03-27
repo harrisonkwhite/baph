@@ -73,6 +73,7 @@ Input_Binding :: enum {
 	Move_Down,
 	Move_Up,
 	Attack,
+	Shield,
 }
 
 Input_Binding_Setting :: struct {
@@ -273,6 +274,11 @@ get_default_input_binding_settings :: proc() -> [len(Input_Binding)]Input_Bindin
 				code     = int(zf4.Mouse_Button_Code.Left),
 				is_mouse = true,
 			}
+		case Input_Binding.Shield:
+			settings[i] = {
+				code     = int(zf4.Key_Code.Left_Shift),
+				is_mouse = false,
+			}
 		}
 	}
 
@@ -291,6 +297,8 @@ get_input_binding_name :: proc(binding: Input_Binding) -> string {
 		return "Move Up"
 	case Input_Binding.Attack:
 		return "Attack"
+	case Input_Binding.Shield:
+		return "Shield"
 	}
 
 	return ""

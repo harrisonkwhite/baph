@@ -15,6 +15,8 @@ PLAYER_SWORD_HITBOX_OFFS_DIST: f32 : 40.0
 PLAYER_SWORD_OFFS_DIST: f32 : 6.0
 PLAYER_SWORD_ROT_OFFS: f32 : 130.0 * math.RAD_PER_DEG
 PLAYER_SWORD_ROT_OFFS_LERP: f32 : 0.4
+PLAYER_SHIELD_OFFS_DIST: f32 : 9.0
+PLAYER_SHIELD_MOVE_SPD_MULT: f32 : 0.6
 
 Player :: struct {
 	active:                       bool,
@@ -22,7 +24,8 @@ Player :: struct {
 	vel:                          zf4.Vec_2D,
 	hp:                           int,
 	inv_time:                     int,
-	sword_rot_base:               f32,
+	shielding:                    bool,
+	aim_dir:                      f32,
 	sword_rot_offs:               f32,
 	sword_rot_offs_axis_positive: bool,
 }
@@ -33,6 +36,11 @@ update_player :: proc(
 	zf4_data: ^zf4.Game_Tick_Func_Data,
 ) -> bool {
 	assert(level.player.active)
+
+	level.player.shielding = is_input_down(
+		&game_config.input_binding_settings[Input_Binding.Shield],
+		zf4_data.input_state,
+	)
 
 	//
 	// Movement
@@ -61,7 +69,8 @@ update_player :: proc(
 
 	move_dir := zf4.calc_normal_or_zero(move_axis)
 
-	vel_lerp_targ := move_dir * PLAYER_MOVE_SPD
+	vel_lerp_targ :=
+		move_dir * PLAYER_MOVE_SPD * (level.player.shielding ? PLAYER_SHIELD_MOVE_SPD_MULT : 1.0)
 	level.player.vel = math.lerp(level.player.vel, vel_lerp_targ, f32(PLAYER_VEL_LERP_FACTOR))
 
 	level.player.pos += level.player.vel
@@ -76,32 +85,30 @@ update_player :: proc(
 	)
 
 	mouse_dir_vec := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
-	mouse_dir := zf4.calc_dir(mouse_dir_vec)
 
-	level.player.sword_rot_base = mouse_dir
+	level.player.aim_dir = zf4.calc_dir(mouse_dir_vec)
 
-	if is_input_pressed(
-		&game_config.input_binding_settings[Input_Binding.Attack],
-		zf4_data.input_state,
-		zf4_data.input_state_last,
-	) {
-		attack_dir := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
-
-		if !spawn_hitmask_quad(
-			level.player.pos + (attack_dir * PLAYER_SWORD_HITBOX_OFFS_DIST),
-			{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
-			{dmg = PLAYER_SWORD_DMG, kb = attack_dir * PLAYER_SWORD_KNOCKBACK},
-			&level.hitmasks,
+	if !level.player.shielding {
+		if is_input_pressed(
+			&game_config.input_binding_settings[Input_Binding.Attack],
+			zf4_data.input_state,
+			zf4_data.input_state_last,
 		) {
-			return false
-		}
+			attack_dir := zf4.calc_normal_or_zero(mouse_cam_pos - level.player.pos)
 
-		level.player.sword_rot_offs_axis_positive = !level.player.sword_rot_offs_axis_positive
+			if !spawn_hitmask_quad(
+				level.player.pos + (attack_dir * PLAYER_SWORD_HITBOX_OFFS_DIST),
+				{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
+				{dmg = PLAYER_SWORD_DMG, kb = attack_dir * PLAYER_SWORD_KNOCKBACK},
+				&level.hitmasks,
+			) {
+				return false
+			}
+
+			level.player.sword_rot_offs_axis_positive = !level.player.sword_rot_offs_axis_positive
+		}
 	}
 
-	//
-	//
-	//
 	sword_rot_offs_dest :=
 		level.player.sword_rot_offs_axis_positive ? PLAYER_SWORD_ROT_OFFS : -PLAYER_SWORD_ROT_OFFS
 
@@ -187,19 +194,33 @@ append_player_level_render_tasks :: proc(
 		return false
 	}
 
-	sword_rot := player.sword_rot_base + player.sword_rot_offs
+	task: Level_Layered_Render_Task
 
-	sword_task := Level_Layered_Render_Task {
-		pos        = player.pos + zf4.calc_len_dir(PLAYER_SWORD_OFFS_DIST, sword_rot),
-		origin     = {0.0, 0.5},
-		scale      = {1.0, 1.0},
-		rot        = sword_rot,
-		alpha      = 1.0,
-		sprite     = Sprite.Sword,
-		sort_depth = player.pos.y + 1.0,
+	if !player.shielding {
+		sword_rot := player.aim_dir + player.sword_rot_offs
+
+		task = {
+			pos        = player.pos + zf4.calc_len_dir(PLAYER_SWORD_OFFS_DIST, sword_rot),
+			origin     = {0.0, 0.5},
+			scale      = {1.0, 1.0},
+			rot        = sword_rot,
+			alpha      = 1.0,
+			sprite     = Sprite.Sword,
+			sort_depth = player.pos.y + 1.0,
+		}
+	} else {
+		task = {
+			pos        = player.pos + zf4.calc_len_dir(PLAYER_SHIELD_OFFS_DIST, player.aim_dir),
+			origin     = {0.0, 0.5},
+			scale      = {1.0, 1.0},
+			rot        = player.aim_dir,
+			alpha      = 1.0,
+			sprite     = Sprite.Shield,
+			sort_depth = player.pos.y + 1.0,
+		}
 	}
 
-	if n, err := append(tasks, sword_task); err != nil {
+	if n, err := append(tasks, task); err != nil {
 		return false
 	}
 
