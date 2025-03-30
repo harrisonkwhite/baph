@@ -37,6 +37,10 @@ Font :: enum {
 	EB_Garamond_128,
 }
 
+Shader_Prog :: enum {
+	Blend,
+}
+
 Sprite :: enum {
 	Player,
 	Melee_Enemy,
@@ -83,22 +87,26 @@ Input_Binding_Setting :: struct {
 
 main :: proc() {
 	game_info := zf4.Game_Info {
-		perm_mem_arena_size          = mem.Megabyte * 80,
-		temp_mem_arena_size          = mem.Megabyte * 40,
-		user_mem_size                = size_of(Game),
-		user_mem_alignment           = align_of(Game),
-		window_init_size             = {1280, 720},
-		window_min_size              = {1280, 720},
-		window_title                 = "Sanctus",
-		window_flags                 = {zf4.Window_Flag.Resizable, zf4.Window_Flag.Hide_Cursor},
-		tex_cnt                      = len(Texture),
-		tex_index_to_file_path_func  = texture_index_to_file_path,
-		font_cnt                     = len(Font),
-		font_index_to_load_info_func = font_index_to_load_info,
-		init_func                    = init_game,
-		tick_func                    = exec_game_tick,
-		draw_func                    = render_game,
-		clean_func                   = clean_game,
+		perm_mem_arena_size                  = mem.Megabyte * 80,
+		user_mem_size                        = size_of(Game),
+		user_mem_alignment                   = align_of(Game),
+		window_init_size                     = {1280, 720},
+		window_min_size                      = {1280, 720},
+		window_title                         = "Sanctus",
+		window_flags                         = {
+			zf4.Window_Flag.Resizable,
+			zf4.Window_Flag.Hide_Cursor,
+		},
+		tex_cnt                              = len(Texture),
+		tex_index_to_file_path_func          = texture_index_to_file_path,
+		font_cnt                             = len(Font),
+		font_index_to_load_info_func         = font_index_to_load_info,
+		shader_prog_cnt                      = len(Shader_Prog),
+		shader_prog_index_to_file_paths_func = shader_prog_index_to_file_paths,
+		init_func                            = init_game,
+		tick_func                            = exec_game_tick,
+		draw_func                            = render_game,
+		clean_func                           = clean_game,
 	}
 
 	zf4.run_game(game_info)
@@ -189,13 +197,13 @@ clean_game :: proc(user_mem: rawptr) {
 	}
 }
 
-texture_index_to_file_path :: proc(index: int) -> cstring {
+texture_index_to_file_path :: proc(index: int) -> string {
 	switch Texture(index) {
 	case Texture.All:
 		return "assets/textures/all.png"
 
 	case:
-		return nil
+		return ""
 	}
 }
 
@@ -216,6 +224,16 @@ font_index_to_load_info :: proc(index: int) -> zf4.Font_Load_Info {
 
 	case:
 		return {}
+	}
+}
+
+shader_prog_index_to_file_paths :: proc(index: int) -> (string, string) {
+	switch Shader_Prog(index) {
+	case Shader_Prog.Blend:
+		return "assets/shaders/blend.vert", "assets/shaders/blend.frag"
+
+	case:
+		return "", ""
 	}
 }
 

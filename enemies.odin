@@ -14,6 +14,7 @@ Enemy :: struct {
 	hp:          int,
 	type:        Enemy_Type,
 	attack_time: int, // TEMP
+	flash_time:  int,
 }
 
 Enemy_Type :: enum {
@@ -76,6 +77,7 @@ append_enemy_level_render_tasks :: proc(
 			rot        = 0.0,
 			alpha      = 1.0,
 			sprite     = Sprite.Melee_Enemy,
+			flash_time = enemy.flash_time,
 			sort_depth = enemy.pos.y,
 		}
 
@@ -109,7 +111,7 @@ render_enemy_hp_bars :: proc(
 
 		hp_bar_pos := camera_to_display_pos(
 			enemy.pos + {0.0, (f32(enemy_size.y) / 2.0) + 8.0},
-			cam.pos,
+			cam,
 			rendering_context.display_size,
 		)
 		hp_bar_size := zf4.Vec_2D{f32(enemy_size.x) - 2.0, 2.0} * CAMERA_SCALE
@@ -157,6 +159,9 @@ damage_enemy :: proc(enemy_index: int, level: ^Level, dmg_info: Damage_Info) {
 	enemy := &level.enemies.buf[enemy_index]
 	enemy.vel += dmg_info.kb
 	enemy.hp = max(enemy.hp - dmg_info.dmg, 0)
+	enemy.flash_time = LEVEL_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT
+
+	apply_camera_shake(&level.cam, 1.0)
 }
 
 gen_enemy_damage_collider :: proc(type: Enemy_Type, pos: zf4.Vec_2D) -> zf4.Rect {

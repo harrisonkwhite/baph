@@ -24,6 +24,7 @@ Player :: struct {
 	vel:                          zf4.Vec_2D,
 	hp:                           int,
 	inv_time:                     int,
+	flash_time:                   int,
 	shielding:                    bool,
 	aim_dir:                      f32,
 	sword_rot_offs:               f32,
@@ -49,6 +50,7 @@ append_player_level_render_tasks :: proc(
 		rot        = 0.0,
 		alpha      = character_alpha,
 		sprite     = Sprite.Player,
+		flash_time = player.flash_time,
 		sort_depth = player.pos.y,
 	}
 
@@ -111,6 +113,7 @@ damage_player :: proc(level: ^Level, dmg_info: Damage_Info) {
 	level.player.inv_time = PLAYER_INV_TIME_LIMIT
 
 	spawn_damage_text(level, dmg_info.dmg, level.player.pos)
+	apply_camera_shake(&level.cam, 2.0)
 }
 
 gen_player_damage_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {

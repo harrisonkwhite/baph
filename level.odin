@@ -15,6 +15,8 @@ DAMAGE_TEXT_SLOWDOWN_MULT :: 0.9
 DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE :: 0.2
 DAMAGE_TEXT_FADE_MULT :: 0.8
 
+LEVEL_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT :: 10 // TEMP?
+
 Level :: struct {
 	player:             Player,
 	enemies:            Enemies,
@@ -32,6 +34,7 @@ Level_Layered_Render_Task :: struct {
 	rot:        f32,
 	alpha:      f32,
 	sprite:     Sprite,
+	flash_time: int,
 	sort_depth: f32,
 }
 
@@ -84,7 +87,7 @@ level_tick :: proc(
 
 	mouse_cam_pos := display_to_camera_pos(
 		zf4_data.input_state.mouse_pos,
-		level.cam.pos,
+		&level.cam,
 		zf4_data.window_state_cache.size,
 	)
 
@@ -98,7 +101,7 @@ level_tick :: proc(
 	} else {
 		spawn_offs_dir := rand.float32_range(0.0, math.PI * 2.0)
 		spawn_offs_dist := rand.float32_range(ENEMY_SPAWN_DIST_RANGE[0], ENEMY_SPAWN_DIST_RANGE[1])
-		spawn_pos := level.cam.pos + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
+		spawn_pos := level.cam.pos_no_offs + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
 
 		// NOTE: Not handling fail case here.
 		spawn_enemy(Enemy_Type.Melee, spawn_pos, level)
@@ -186,6 +189,10 @@ level_tick :: proc(
 		if level.player.inv_time > 0 {
 			level.player.inv_time -= 1
 		}
+
+		if level.player.flash_time > 0 {
+			level.player.flash_time -= 1
+		}
 	}
 
 	//
@@ -219,6 +226,11 @@ level_tick :: proc(
 			}
 
 			enemy.attack_time = 0
+		}
+
+		// NOTE: Should the below be elsewhere?
+		if enemy.flash_time > 0 {
+			enemy.flash_time -= 1
 		}
 	}
 
@@ -297,7 +309,7 @@ level_tick :: proc(
 	}
 
 	//
-	// Enemy Death
+	// Enemy Deaths
 	//
 	for i in 0 ..< ENEMY_LIMIT {
 		if !level.enemies.activity[i] {
@@ -309,6 +321,7 @@ level_tick :: proc(
 		assert(enemy.hp >= 0)
 
 		if enemy.hp == 0 {
+			apply_camera_shake(&level.cam, 3.0)
 			level.enemies.activity[i] = false
 		}
 	}
@@ -319,7 +332,7 @@ level_tick :: proc(
 	{
 		mouse_cam_pos := display_to_camera_pos(
 			zf4_data.input_state.mouse_pos,
-			level.cam.pos,
+			&level.cam,
 			zf4_data.window_state_cache.size,
 		)
 		player_to_mouse_cam_pos_dist := zf4.calc_dist(level.player.pos, mouse_cam_pos)
@@ -332,7 +345,9 @@ level_tick :: proc(
 		look_offs := player_to_mouse_cam_pos_dir * look_dist
 
 		dest := level.player.pos + look_offs
-		level.cam.pos = math.lerp(level.cam.pos, dest, f32(CAMERA_POS_LERP_FACTOR))
+		level.cam.pos_no_offs = math.lerp(level.cam.pos_no_offs, dest, f32(CAMERA_POS_LERP_FACTOR))
+
+		level.cam.shake *= CAMERA_SHAKE_MULT
 	}
 
 	//
@@ -361,7 +376,7 @@ render_level :: proc(level: ^Level, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 
 	init_camera_view_matrix_4x4(
 		&zf4_data.rendering_context.state.view_mat,
-		level.cam.pos,
+		&level.cam,
 		zf4_data.rendering_context.display_size,
 	)
 
@@ -388,17 +403,56 @@ render_level :: proc(level: ^Level, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 	sprite_src_rects := SPRITE_SRC_RECTS
 
 	for &task in render_tasks {
-		zf4.render_texture(
-			&zf4_data.rendering_context,
-			int(Texture.All),
-			zf4_data.textures,
-			sprite_src_rects[task.sprite],
-			task.pos,
-			task.origin,
-			task.scale,
-			task.rot,
-			{1.0, 1.0, 1.0, task.alpha},
-		)
+		if task.flash_time > 0 {
+			zf4.flush(&zf4_data.rendering_context)
+			zf4.set_surface(&zf4_data.rendering_context, 0)
+
+			zf4.render_clear()
+
+			zf4.render_texture(
+				&zf4_data.rendering_context,
+				int(Texture.All),
+				zf4_data.textures,
+				sprite_src_rects[task.sprite],
+				task.pos,
+				task.origin,
+				task.scale,
+				task.rot,
+				{1.0, 1.0, 1.0, task.alpha},
+			)
+
+			zf4.flush(&zf4_data.rendering_context)
+
+			zf4.unset_surface(&zf4_data.rendering_context)
+
+			zf4.set_surface_shader_prog(
+				&zf4_data.rendering_context,
+				zf4_data.shader_progs.gl_ids[Shader_Prog.Blend],
+			)
+			zf4.set_surface_shader_prog_uniform(
+				&zf4_data.rendering_context,
+				"u_col",
+				zf4.WHITE.rgb,
+			)
+			zf4.set_surface_shader_prog_uniform(
+				&zf4_data.rendering_context,
+				"u_intensity",
+				f32(task.flash_time) / (LEVEL_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT / 2.0),
+			)
+			zf4.render_surface(&zf4_data.rendering_context, 0)
+		} else {
+			zf4.render_texture(
+				&zf4_data.rendering_context,
+				int(Texture.All),
+				zf4_data.textures,
+				sprite_src_rects[task.sprite],
+				task.pos,
+				task.origin,
+				task.scale,
+				task.rot,
+				{1.0, 1.0, 1.0, task.alpha},
+			)
+		}
 	}
 
 	for i in 0 ..< level.hitmask_active_cnt {
@@ -410,6 +464,7 @@ render_level :: proc(level: ^Level, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 	//
 	// UI
 	//
+	// TODO: There should be an assert tripped if we change view matrix without flushing beforehand.
 	zf4.init_iden_matrix_4x4(&zf4_data.rendering_context.state.view_mat)
 
 	render_enemy_hp_bars(
@@ -428,7 +483,7 @@ render_level :: proc(level: ^Level, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 			dt_str,
 			int(DAMAGE_TEXT_FONT),
 			zf4_data.fonts,
-			camera_to_display_pos(dt.pos, level.cam.pos, zf4_data.rendering_context.display_size),
+			camera_to_display_pos(dt.pos, &level.cam, zf4_data.rendering_context.display_size),
 			blend = {1.0, 1.0, 1.0, dt.alpha},
 		)
 	}
