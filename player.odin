@@ -17,6 +17,12 @@ PLAYER_SWORD_ROT_OFFS: f32 : 130.0 * math.RAD_PER_DEG
 PLAYER_SWORD_ROT_OFFS_LERP: f32 : 0.4
 PLAYER_SHIELD_OFFS_DIST: f32 : 9.0
 PLAYER_SHIELD_MOVE_SPD_MULT: f32 : 0.6
+PLAYER_SHIELD_PUSH_DMG :: 1
+PLAYER_SHIELD_PUSH_KNOCKBACK: f32 : 16.0
+PLAYER_SHIELD_HITBOX_SIZE :: 32
+PLAYER_SHIELD_HITBOX_OFFS_DIST: f32 : 40.0
+PLAYER_SHIELD_PUSH_OFFS_DIST: f32 : 12.0
+PLAYER_SHIELD_PUSH_OFFS_DIST_LERP: f32 : 0.8
 
 Player :: struct {
 	active:                       bool,
@@ -29,12 +35,26 @@ Player :: struct {
 	aim_dir:                      f32,
 	sword_rot_offs:               f32,
 	sword_rot_offs_axis_positive: bool,
+	shield_push_offs_dist:        f32,
+}
+
+is_player_valid :: proc(player: ^Player) -> bool {
+	assert(player != nil)
+
+	if mem.check_zero_ptr(player, size_of(player^)) {
+		return true
+	}
+
+	return player.active && player.hp >= 0 && player.inv_time >= 0 && player.flash_time >= 0
 }
 
 append_player_world_render_tasks :: proc(
 	tasks: ^[dynamic]World_Layered_Render_Task,
 	player: ^Player,
 ) -> bool {
+	assert(tasks != nil)
+	assert(player != nil)
+	assert(is_player_valid(player))
 	assert(player.active)
 
 	character_alpha: f32 = 1.0
@@ -74,7 +94,7 @@ append_player_world_render_tasks :: proc(
 		}
 	} else {
 		task = {
-			pos        = player.pos + zf4.calc_len_dir(PLAYER_SHIELD_OFFS_DIST, player.aim_dir),
+			pos        = player.pos + zf4.calc_len_dir(PLAYER_SHIELD_OFFS_DIST + player.shield_push_offs_dist, player.aim_dir),
 			origin     = {0.0, 0.5},
 			scale      = {1.0, 1.0},
 			rot        = player.aim_dir,

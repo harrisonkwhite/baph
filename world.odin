@@ -112,6 +112,8 @@ world_tick :: proc(
 	//
 	// Player
 	//
+	assert(is_player_valid(&world.player))
+
 	if world.player.active {
 		world.player.shielding = is_input_down(
 			&game_config.input_binding_settings[Input_Binding.Shield],
@@ -157,18 +159,16 @@ world_tick :: proc(
 
 		world.player.aim_dir = zf4.calc_dir(mouse_dir_vec)
 
-		if !world.player.shielding {
-			if is_input_pressed(
-				&game_config.input_binding_settings[Input_Binding.Attack],
-				zf4_data.input_state,
-				zf4_data.input_state_last,
-			) {
-				attack_dir := zf4.calc_normal_or_zero(mouse_cam_pos - world.player.pos)
-
+		if is_input_pressed(
+			&game_config.input_binding_settings[Input_Binding.Attack],
+			zf4_data.input_state,
+			zf4_data.input_state_last,
+		) {
+			if !world.player.shielding {
 				if !spawn_hitmask_quad(
-					world.player.pos + (attack_dir * PLAYER_SWORD_HITBOX_OFFS_DIST),
+					world.player.pos + (mouse_dir_vec * PLAYER_SWORD_HITBOX_OFFS_DIST),
 					{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
-					{dmg = PLAYER_SWORD_DMG, kb = attack_dir * PLAYER_SWORD_KNOCKBACK},
+					{dmg = PLAYER_SWORD_DMG, kb = mouse_dir_vec * PLAYER_SWORD_KNOCKBACK},
 					{Hitmask_Flag.Damage_Enemy},
 					world,
 				) {
@@ -177,6 +177,21 @@ world_tick :: proc(
 
 				world.player.sword_rot_offs_axis_positive =
 				!world.player.sword_rot_offs_axis_positive
+			} else {
+				if !spawn_hitmask_quad(
+					world.player.pos + (mouse_dir_vec * PLAYER_SHIELD_HITBOX_OFFS_DIST),
+					{PLAYER_SHIELD_HITBOX_SIZE, PLAYER_SHIELD_HITBOX_SIZE},
+					{
+						dmg = PLAYER_SHIELD_PUSH_DMG,
+						kb = mouse_dir_vec * PLAYER_SHIELD_PUSH_KNOCKBACK,
+					},
+					{Hitmask_Flag.Damage_Enemy},
+					world,
+				) {
+					return World_Tick_Result.Error
+				}
+
+				world.player.shield_push_offs_dist = PLAYER_SHIELD_PUSH_OFFS_DIST
 			}
 		}
 
@@ -185,6 +200,9 @@ world_tick :: proc(
 
 		world.player.sword_rot_offs +=
 			(sword_rot_offs_dest - world.player.sword_rot_offs) * PLAYER_SWORD_ROT_OFFS_LERP
+
+		world.player.shield_push_offs_dist -=
+			world.player.shield_push_offs_dist * PLAYER_SWORD_ROT_OFFS_LERP
 
 		if world.player.inv_time > 0 {
 			world.player.inv_time -= 1
