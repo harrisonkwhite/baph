@@ -233,6 +233,10 @@ render_enemy_hp_bars :: proc(
 
 		enemy := &enemies.buf[i]
 
+		if enemy.hp == type_infos[enemy.type].hp_limit {
+			continue
+		}
+
 		enemy_size := zf4.calc_rect_i_size(sprite_src_rects[type_infos[enemy.type].sprite])
 
 		hp_bar_pos := camera_to_display_pos(
