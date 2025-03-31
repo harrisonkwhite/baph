@@ -489,6 +489,32 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		)
 	}
 
+	player_hp_bar_height: f32 = 20.0
+	player_hp_bar_rect := zf4.Rect {
+		f32(zf4_data.rendering_context.display_size.x) * 0.05,
+		(f32(zf4_data.rendering_context.display_size.y) * 0.9) - (player_hp_bar_height / 2.0),
+		f32(zf4_data.rendering_context.display_size.x) * 0.2,
+		player_hp_bar_height,
+	}
+	zf4.render_bar_hor(
+		&zf4_data.rendering_context,
+		player_hp_bar_rect,
+		f32(world.player.hp) / PLAYER_HP_LIMIT,
+		zf4.WHITE.rgb,
+		zf4.BLACK.rgb,
+	)
+
+	player_hp_str_buf: [16]byte
+	player_hp_str := fmt.bprintf(player_hp_str_buf[:], "%d/%d", world.player.hp, PLAYER_HP_LIMIT)
+	zf4.render_str(
+		&zf4_data.rendering_context,
+		player_hp_str,
+		int(Font.EB_Garamond_40),
+		zf4_data.fonts,
+		zf4.calc_rect_center_right(player_hp_bar_rect) + {12.0, 0.0},
+		zf4.Str_Hor_Align.Left,
+	)
+
 	return true
 }
 
