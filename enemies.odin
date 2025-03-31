@@ -9,6 +9,26 @@ ENEMY_SPAWN_INTERVAL :: 200
 ENEMY_SPAWN_DIST_RANGE: [2]f32 : {256.0, 400.0}
 ENEMY_DMG_FLASH_TIME :: 5
 
+// NOTE: Consider accessor function instead.
+ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
+	Enemy_Type.Melee = {
+		ai_func = melee_enemy_ai,
+		sprite = Sprite.Melee_Enemy,
+		hp_limit = 100,
+		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
+		contact_dmg = 2,
+		contact_kb = 9.0,
+	},
+	Enemy_Type.Ranger = {
+		ai_func = ranger_enemy_ai,
+		sprite = Sprite.Ranger_Enemy,
+		hp_limit = 70,
+		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
+		contact_dmg = 1,
+		contact_kb = 4.0,
+	},
+}
+
 Enemy :: struct {
 	pos:         zf4.Vec_2D,
 	vel:         zf4.Vec_2D,
@@ -43,29 +63,35 @@ Enemy_Type_Info :: struct {
 
 Enemy_Type_AI_Func :: proc(enemy_index: int, world: ^World) -> bool
 
-// NOTE: Consider accessor function instead.
-ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
-	Enemy_Type.Melee = {
-		ai_func = melee_enemy_ai,
-		sprite = Sprite.Melee_Enemy,
-		hp_limit = 100,
-		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
-		contact_dmg = 2,
-		contact_kb = 9.0,
-	},
-	Enemy_Type.Ranger = {
-		ai_func = ranger_enemy_ai,
-		sprite = Sprite.Ranger_Enemy,
-		hp_limit = 70,
-		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
-		contact_dmg = 1,
-		contact_kb = 4.0,
-	},
-}
-
 Enemies :: struct {
 	buf:      [ENEMY_LIMIT]Enemy,
 	activity: [ENEMY_LIMIT]bool, // TEMP: Use a bitset later.
+	versions: [ENEMY_LIMIT]int,
+}
+
+Enemy_ID :: struct {
+	index:   int,
+	version: int,
+}
+
+gen_enemy_id :: proc(index: int, enemies: ^Enemies) -> Enemy_ID {
+	assert(index >= 0 && index < ENEMY_LIMIT)
+	assert(enemies != nil)
+	assert(enemies.activity[index])
+	return {index = index, version = enemies.versions[index]}
+}
+
+get_enemy :: proc(id: Enemy_ID, enemies: ^Enemies) -> ^Enemy {
+	if !does_enemy_exist(id, enemies) {
+		return nil
+	}
+
+	return &enemies.buf[id.index]
+}
+
+does_enemy_exist :: proc(id: Enemy_ID, enemies: ^Enemies) -> bool {
+	assert(enemies != nil)
+	return enemies.activity[id.index] && enemies.versions[id.index] == id.version
 }
 
 melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
@@ -132,6 +158,7 @@ append_enemy_world_render_tasks :: proc(
 	tasks: ^[dynamic]World_Layered_Render_Task,
 	enemies: ^Enemies,
 ) -> bool {
+	sprite_src_rects := SPRITE_SRC_RECTS
 	enemy_type_infos := ENEMY_TYPE_INFOS
 
 	for i in 0 ..< ENEMY_LIMIT {
@@ -141,15 +168,17 @@ append_enemy_world_render_tasks :: proc(
 
 		enemy := &enemies.buf[i]
 
+		sprite := enemy_type_infos[enemy.type].sprite
+
 		task := World_Layered_Render_Task {
 			pos        = enemy.pos,
 			origin     = {0.5, 0.5},
 			scale      = {1.0, 1.0},
 			rot        = 0.0,
 			alpha      = 1.0,
-			sprite     = enemy_type_infos[enemy.type].sprite,
+			sprite     = sprite,
 			flash_time = enemy.flash_time,
-			sort_depth = enemy.pos.y,
+			sort_depth = enemy.pos.y + (f32(sprite_src_rects[sprite].height) / 2.0),
 		}
 
 		n, err := append(tasks, task)
@@ -215,6 +244,7 @@ spawn_enemy :: proc(type: Enemy_Type, pos: zf4.Vec_2D, world: ^World) -> bool {
 			}
 
 			world.enemies.activity[i] = true
+			world.enemies.versions[i] += 1
 
 			return true
 		}

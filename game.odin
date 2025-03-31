@@ -45,6 +45,7 @@ Shader_Prog :: enum {
 
 Sprite :: enum {
 	Player,
+	Minion,
 	Melee_Enemy,
 	Ranger_Enemy,
 	Sword,
@@ -58,19 +59,20 @@ Sprite :: enum {
 	Cursor,
 }
 
-SPRITE_SRC_RECTS :: [?]zf4.Rect_I {
-	{8, 0, 24, 40},
-	{0, 40, 24, 40},
-	{24, 40, 24, 32},
-	{64, 1, 32, 6},
-	{48, 32, 8, 32},
-	{64, 8, 16, 8},
-	{72, 40, 16, 48},
-	{88, 40, 16, 48},
-	{104, 40, 16, 48},
-	{120, 24, 16, 64},
-	{136, 24, 16, 64},
-	{0, 8, 8, 8},
+SPRITE_SRC_RECTS :: [len(Sprite)]zf4.Rect_I {
+	Sprite.Player             = {8, 0, 24, 40},
+	Sprite.Minion             = {32, 0, 24, 32},
+	Sprite.Melee_Enemy        = {0, 40, 24, 40},
+	Sprite.Ranger_Enemy       = {24, 40, 24, 32},
+	Sprite.Sword              = {64, 1, 32, 6},
+	Sprite.Shield             = {48, 32, 8, 32},
+	Sprite.Projectile         = {64, 8, 16, 8},
+	Sprite.Wall               = {72, 40, 16, 48},
+	Sprite.Door_Left          = {88, 40, 16, 48},
+	Sprite.Door_Right         = {104, 40, 16, 48},
+	Sprite.Left_Ceiling_Beam  = {120, 24, 16, 64},
+	Sprite.Right_Ceiling_Beam = {136, 24, 16, 64},
+	Sprite.Cursor             = {0, 8, 8, 8},
 }
 
 Input_Binding :: enum {
