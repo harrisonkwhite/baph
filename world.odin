@@ -15,8 +15,6 @@ DAMAGE_TEXT_SLOWDOWN_MULT :: 0.9
 DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE :: 0.2
 DAMAGE_TEXT_FADE_MULT :: 0.8
 
-WORLD_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT :: 10 // TEMP?
-
 World :: struct {
 	player:             Player,
 	enemies:            Enemies,
@@ -223,30 +221,10 @@ world_tick :: proc(
 
 		enemy := &world.enemies.buf[i]
 
-		enemy.vel *= 0.8
-		enemy.pos += enemy.vel
-
-		if enemy.attack_time < 60 {
-			enemy.attack_time += 1
-		} else {
-			attack_dir := zf4.calc_normal_or_zero(world.player.pos - enemy.pos)
-			ATTACK_HITBOX_OFFS_DIST :: 32.0
-			ATTACK_KNOCKBACK :: 6.0
-
-			if !spawn_hitmask_quad(
-				enemy.pos + (attack_dir * ATTACK_HITBOX_OFFS_DIST),
-				{32.0, 32.0},
-				{dmg = 1, kb = attack_dir * ATTACK_KNOCKBACK},
-				{Hitmask_Flag.Damage_Player},
-				world,
-			) {
-				return World_Tick_Result.Error
-			}
-
-			enemy.attack_time = 0
+		if !enemy_type_infos[enemy.type].ai_func(i, world) {
+			return World_Tick_Result.Error
 		}
 
-		// NOTE: Should the below be elsewhere?
 		if enemy.flash_time > 0 {
 			enemy.flash_time -= 1
 		}
@@ -311,7 +289,6 @@ world_tick :: proc(
 				// NOTE: Could cache the collider polygons.
 				if zf4.does_poly_inters_with_rect(hm.collider, enemy_dmg_collider) {
 					damage_enemy(j, world, hm.dmg_info)
-					spawn_damage_text(world, hm.dmg_info.dmg, enemy.pos)
 				}
 			}
 		}
@@ -452,11 +429,14 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 				"u_col",
 				zf4.WHITE.rgb,
 			)
-			zf4.set_surface_shader_prog_uniform(
+			/*zf4.set_surface_shader_prog_uniform(
 				&zf4_data.rendering_context,
 				"u_intensity",
-				f32(task.flash_time) / (WORLD_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT / 2.0),
-			)
+				min(
+					f32(task.flash_time) / (WORLD_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT / 2.0),
+					1.0,
+				),
+			)*/
 			zf4.render_surface(&zf4_data.rendering_context, 0)
 		} else {
 			zf4.render_texture(

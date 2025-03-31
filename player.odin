@@ -8,6 +8,7 @@ PLAYER_MOVE_SPD :: 3.0
 PLAYER_VEL_LERP_FACTOR :: 0.2
 PLAYER_HP_LIMIT :: 100
 PLAYER_INV_TIME_LIMIT :: 30
+PLAYER_DMG_FLASH_TIME :: 5
 PLAYER_SWORD_DMG :: 10
 PLAYER_SWORD_KNOCKBACK: f32 : 6.0
 PLAYER_SWORD_HITBOX_SIZE :: 32
@@ -131,8 +132,10 @@ damage_player :: proc(world: ^World, dmg_info: Damage_Info) {
 	world.player.vel += dmg_info.kb
 	world.player.hp = max(world.player.hp - dmg_info.dmg, 0)
 	world.player.inv_time = PLAYER_INV_TIME_LIMIT
+	world.player.flash_time = PLAYER_DMG_FLASH_TIME
 
 	spawn_damage_text(world, dmg_info.dmg, world.player.pos)
+
 	apply_camera_shake(&world.cam, 2.0)
 }
 

@@ -7,14 +7,18 @@ import "zf4"
 ENEMY_LIMIT :: 256
 ENEMY_SPAWN_INTERVAL :: 200
 ENEMY_SPAWN_DIST_RANGE: [2]f32 : {256.0, 400.0}
+ENEMY_DMG_FLASH_TIME :: 5
 
 Enemy :: struct {
 	pos:         zf4.Vec_2D,
 	vel:         zf4.Vec_2D,
 	hp:          int,
-	type:        Enemy_Type,
-	attack_time: int, // TEMP
+	attack_time: int,
+	moving:      bool,
+	move_time:   int,
+	move_dir:    zf4.Vec_2D,
 	flash_time:  int,
+	type:        Enemy_Type,
 }
 
 Enemy_Type :: enum {
@@ -29,6 +33,7 @@ Enemy_Type_Flag :: enum {
 Enemy_Type_Flag_Set :: bit_set[Enemy_Type_Flag]
 
 Enemy_Type_Info :: struct {
+	ai_func:     Enemy_Type_AI_Func,
 	sprite:      Sprite,
 	hp_limit:    int,
 	flags:       Enemy_Type_Flag_Set,
@@ -36,9 +41,12 @@ Enemy_Type_Info :: struct {
 	contact_kb:  f32,
 }
 
+Enemy_Type_AI_Func :: proc(enemy_index: int, world: ^World) -> bool
+
 // NOTE: Consider accessor function instead.
 ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
 	Enemy_Type.Melee = {
+		ai_func = melee_enemy_ai,
 		sprite = Sprite.Melee_Enemy,
 		hp_limit = 100,
 		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
@@ -46,6 +54,7 @@ ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
 		contact_kb = 8.0,
 	},
 	Enemy_Type.Ranger = {
+		ai_func = ranger_enemy_ai,
 		sprite = Sprite.Melee_Enemy,
 		hp_limit = 100,
 		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
@@ -57,6 +66,66 @@ ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
 Enemies :: struct {
 	buf:      [ENEMY_LIMIT]Enemy,
 	activity: [ENEMY_LIMIT]bool, // TEMP: Use a bitset later.
+}
+
+melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
+	assert(enemy_index >= 0 && enemy_index < ENEMY_LIMIT)
+	assert(world != nil)
+	assert(world.enemies.activity[enemy_index])
+
+	enemy := &world.enemies.buf[enemy_index]
+
+	assert(enemy.type == Enemy_Type.Melee)
+
+	if enemy.move_time > 0 {
+		enemy.move_time -= 1
+	} else {
+		enemy.moving = !enemy.moving
+		enemy.move_time = 60
+		enemy.move_dir = zf4.calc_len_dir(1.0, rand.float32() * math.TAU)
+	}
+
+	vel_targ := enemy.moving ? enemy.move_dir * 2.0 : {}
+	enemy.vel += (vel_targ - enemy.vel) * 0.2
+	enemy.pos += enemy.vel
+
+	if enemy.attack_time < 60 {
+		enemy.attack_time += 1
+	} else {
+		attack_dir := zf4.calc_normal_or_zero(world.player.pos - enemy.pos)
+		ATTACK_HITBOX_OFFS_DIST :: 32.0
+		ATTACK_HITBOX_SIZE :: 32.0
+		ATTACK_KNOCKBACK :: 6.0
+
+		if !spawn_hitmask_quad(
+			enemy.pos + (attack_dir * ATTACK_HITBOX_OFFS_DIST),
+			{ATTACK_HITBOX_SIZE, ATTACK_HITBOX_SIZE},
+			{dmg = 1, kb = attack_dir * ATTACK_KNOCKBACK},
+			{Hitmask_Flag.Damage_Player},
+			world,
+		) {
+			return false
+		}
+
+		enemy.attack_time = 0
+	}
+
+	return true
+}
+
+ranger_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
+	assert(enemy_index >= 0 && enemy_index < ENEMY_LIMIT)
+	assert(world != nil)
+	assert(world.enemies.activity[enemy_index])
+
+	enemy := &world.enemies.buf[enemy_index]
+
+	assert(enemy.type == Enemy_Type.Ranger)
+
+	enemy.vel *= 0.8
+	enemy.pos += enemy.vel
+
+	return true
 }
 
 append_enemy_world_render_tasks :: proc(
@@ -159,9 +228,11 @@ damage_enemy :: proc(enemy_index: int, world: ^World, dmg_info: Damage_Info) {
 	enemy := &world.enemies.buf[enemy_index]
 	enemy.vel += dmg_info.kb
 	enemy.hp = max(enemy.hp - dmg_info.dmg, 0)
-	enemy.flash_time = WORLD_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT
+	enemy.flash_time = ENEMY_DMG_FLASH_TIME
 
-	apply_camera_shake(&world.cam, 1.0)
+	spawn_damage_text(world, dmg_info.dmg, enemy.pos)
+
+	apply_camera_shake(&world.cam, 0.75)
 }
 
 gen_enemy_damage_collider :: proc(type: Enemy_Type, pos: zf4.Vec_2D) -> zf4.Rect {
