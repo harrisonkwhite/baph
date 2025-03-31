@@ -14,7 +14,7 @@ PLAYER_INV_TIME_LIMIT :: 30
 PLAYER_DMG_FLASH_TIME :: 5
 PLAYER_SWORD_DMG :: 10
 PLAYER_SWORD_KNOCKBACK: f32 : 6.0
-PLAYER_SWORD_HITBOX_SIZE :: 32
+PLAYER_SWORD_HITBOX_SIZE :: 32.0
 PLAYER_SWORD_HITBOX_OFFS_DIST: f32 : 40.0
 PLAYER_SWORD_OFFS_DIST: f32 : 6.0
 PLAYER_SWORD_ROT_OFFS: f32 : 130.0 * math.RAD_PER_DEG
@@ -31,6 +31,11 @@ PLAYER_COMBAT_RADIUS :: 256.0
 
 MINION_CNT :: 5
 MINION_ORBIT_DIST :: 80.0
+MINION_ATTACK_DMG :: 6
+MINION_ATTACK_KNOCKBACK :: 4.0
+MINION_ATTACK_INTERVAL :: 60
+MINION_ATTACK_HITBOX_SIZE :: 32.0
+MINION_ATTACK_HITBOX_OFFS_DIST :: 40.0
 
 HITMASK_LIMIT :: 64
 
@@ -83,9 +88,10 @@ Player :: struct {
 }
 
 Minion :: struct {
-	pos:  zf4.Vec_2D,
-	vel:  zf4.Vec_2D,
-	targ: Enemy_ID,
+	pos:         zf4.Vec_2D,
+	vel:         zf4.Vec_2D,
+	targ:        Enemy_ID,
+	attack_time: int,
 }
 
 Hitmask :: struct {
@@ -334,6 +340,28 @@ world_tick :: proc(
 		vel_targ := dest_dist > dest_dist_targ ? dest_dir * 2.5 : {}
 		minion.vel += (vel_targ - minion.vel) * 0.2
 		minion.pos += minion.vel
+
+		if targ != nil {
+			if minion.attack_time < MINION_ATTACK_INTERVAL {
+				minion.attack_time += 1
+			} else {
+				attack_dir := dest_dir // TEMP?
+
+				if !spawn_hitmask_quad(
+					minion.pos + (attack_dir * MINION_ATTACK_HITBOX_OFFS_DIST),
+					{MINION_ATTACK_HITBOX_SIZE, MINION_ATTACK_HITBOX_SIZE},
+					{dmg = MINION_ATTACK_DMG, kb = attack_dir * MINION_ATTACK_KNOCKBACK},
+					{Hitmask_Flag.Damage_Enemy},
+					world,
+				) {
+					return World_Tick_Result.Error
+				}
+
+				minion.attack_time = 0
+			}
+		} else {
+			minion.attack_time = 0
+		}
 	}
 
 	//
