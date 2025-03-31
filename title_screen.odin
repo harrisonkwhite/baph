@@ -1,4 +1,4 @@
-package sanctus
+package apocalypse
 
 import "core:fmt"
 import "core:mem"
@@ -6,7 +6,6 @@ import "zf4"
 
 MEM_ARENA_SIZE :: mem.Megabyte * 2
 
-TITLE_STR :: "Sanctus"
 TITLE_FONT :: Font.EB_Garamond_128
 TITLE_Y_PERC :: 0.2
 
@@ -41,7 +40,7 @@ Title_Screen :: struct {
 
 Title_Screen_Tick_Result :: enum {
 	Normal,
-	Go_To_Level,
+	Go_To_World,
 	Exit_Game,
 }
 
@@ -275,7 +274,7 @@ title_screen_tick :: proc(
 		if ts.home_button_hovered_index != -1 {
 			switch (Home_Button(ts.home_button_hovered_index)) {
 			case Home_Button.Play:
-				tick_res = Title_Screen_Tick_Result.Go_To_Level
+				tick_res = Title_Screen_Tick_Result.Go_To_World
 			case Home_Button.Options:
 				ts.options_menu_open = true
 			case Home_Button.Exit:
@@ -325,7 +324,7 @@ render_title_screen :: proc(
 
 		zf4.render_str(
 			&zf4_data.rendering_context,
-			TITLE_STR,
+			GAME_TITLE,
 			int(TITLE_FONT),
 			zf4_data.fonts,
 			title_pos,

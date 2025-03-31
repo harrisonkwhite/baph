@@ -1,14 +1,16 @@
-package sanctus
+package apocalypse
 
 import "core:fmt"
 import "core:mem"
 import "zf4"
 
+GAME_TITLE :: "Apocalypse"
+
 Game :: struct {
 	config:       Game_Config,
-	in_level:     bool,
+	in_world:     bool,
 	title_screen: Title_Screen,
-	level:        Level,
+	world:        World,
 	mouse_pos:    zf4.Vec_2D, // TEMP? Just pass input state into render function?
 }
 
@@ -92,7 +94,7 @@ main :: proc() {
 		user_mem_alignment                   = align_of(Game),
 		window_init_size                     = {1280, 720},
 		window_min_size                      = {1280, 720},
-		window_title                         = "Sanctus",
+		window_title                         = GAME_TITLE,
 		window_flags                         = {
 			zf4.Window_Flag.Resizable,
 			zf4.Window_Flag.Hide_Cursor,
@@ -134,22 +136,22 @@ exec_game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 
 	game.mouse_pos = zf4_data.input_state.mouse_pos
 
-	if !game.in_level {
+	if !game.in_world {
 		ts_tick_res := title_screen_tick(&game.title_screen, &game.config, zf4_data)
 
-		if ts_tick_res == Title_Screen_Tick_Result.Go_To_Level {
+		if ts_tick_res == Title_Screen_Tick_Result.Go_To_World {
 			clean_title_screen(&game.title_screen)
-			game.in_level = true
-			init_level(&game.level)
+			game.in_world = true
+			init_world(&game.world)
 		} else if ts_tick_res == Title_Screen_Tick_Result.Exit_Game {
 			zf4_data.exit_game^ = true
 		}
 	} else {
-		level_tick_res := level_tick(&game.level, &game.config, zf4_data)
+		world_tick_res := world_tick(&game.world, &game.config, zf4_data)
 
-		if level_tick_res == Level_Tick_Result.Go_To_Title {
-			clean_level(&game.level)
-			game.in_level = false
+		if world_tick_res == World_Tick_Result.Go_To_Title {
+			clean_world(&game.world)
+			game.in_world = false
 			init_title_screen(&game.title_screen, &game.config)
 		}
 	}
@@ -164,12 +166,12 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 
 	zf4.render_clear({0.2, 0.3, 0.4, 1.0})
 
-	if !game.in_level {
+	if !game.in_world {
 		if !render_title_screen(&game.title_screen, &game.config, zf4_data) {
 			return false
 		}
 	} else {
-		if !render_level(&game.level, zf4_data) {
+		if !render_world(&game.world, zf4_data) {
 			return false
 		}
 	}
@@ -190,10 +192,10 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 clean_game :: proc(user_mem: rawptr) {
 	game := (^Game)(user_mem)
 
-	if !game.in_level {
+	if !game.in_world {
 		clean_title_screen(&game.title_screen)
 	} else {
-		clean_level(&game.level)
+		clean_world(&game.world)
 	}
 }
 

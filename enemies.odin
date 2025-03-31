@@ -1,4 +1,4 @@
-package sanctus
+package apocalypse
 
 import "core:math"
 import "core:math/rand"
@@ -59,8 +59,8 @@ Enemies :: struct {
 	activity: [ENEMY_LIMIT]bool, // TEMP: Use a bitset later.
 }
 
-append_enemy_level_render_tasks :: proc(
-	tasks: ^[dynamic]Level_Layered_Render_Task,
+append_enemy_world_render_tasks :: proc(
+	tasks: ^[dynamic]World_Layered_Render_Task,
 	enemies: ^Enemies,
 ) -> bool {
 	for i in 0 ..< ENEMY_LIMIT {
@@ -70,7 +70,7 @@ append_enemy_level_render_tasks :: proc(
 
 		enemy := &enemies.buf[i]
 
-		task := Level_Layered_Render_Task {
+		task := World_Layered_Render_Task {
 			pos        = enemy.pos,
 			origin     = {0.5, 0.5},
 			scale      = {1.0, 1.0},
@@ -132,18 +132,18 @@ render_enemy_hp_bars :: proc(
 	}
 }
 
-spawn_enemy :: proc(type: Enemy_Type, pos: zf4.Vec_2D, level: ^Level) -> bool {
+spawn_enemy :: proc(type: Enemy_Type, pos: zf4.Vec_2D, world: ^World) -> bool {
 	type_infos := ENEMY_TYPE_INFOS
 
 	for i in 0 ..< ENEMY_LIMIT {
-		if !level.enemies.activity[i] {
-			level.enemies.buf[i] = {
+		if !world.enemies.activity[i] {
+			world.enemies.buf[i] = {
 				pos  = pos,
 				hp   = type_infos[type].hp_limit,
 				type = type,
 			}
 
-			level.enemies.activity[i] = true
+			world.enemies.activity[i] = true
 
 			return true
 		}
@@ -152,16 +152,16 @@ spawn_enemy :: proc(type: Enemy_Type, pos: zf4.Vec_2D, level: ^Level) -> bool {
 	return false
 }
 
-damage_enemy :: proc(enemy_index: int, level: ^Level, dmg_info: Damage_Info) {
-	assert(level.enemies.activity[enemy_index])
+damage_enemy :: proc(enemy_index: int, world: ^World, dmg_info: Damage_Info) {
+	assert(world.enemies.activity[enemy_index])
 	assert(dmg_info.dmg > 0)
 
-	enemy := &level.enemies.buf[enemy_index]
+	enemy := &world.enemies.buf[enemy_index]
 	enemy.vel += dmg_info.kb
 	enemy.hp = max(enemy.hp - dmg_info.dmg, 0)
-	enemy.flash_time = LEVEL_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT
+	enemy.flash_time = WORLD_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT
 
-	apply_camera_shake(&level.cam, 1.0)
+	apply_camera_shake(&world.cam, 1.0)
 }
 
 gen_enemy_damage_collider :: proc(type: Enemy_Type, pos: zf4.Vec_2D) -> zf4.Rect {

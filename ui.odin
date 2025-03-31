@@ -1,4 +1,4 @@
-package sanctus
+package apocalypse
 
 import "core:mem"
 import "zf4"

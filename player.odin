@@ -1,4 +1,4 @@
-package sanctus
+package apocalypse
 
 import "core:math"
 import "core:mem"
@@ -31,8 +31,8 @@ Player :: struct {
 	sword_rot_offs_axis_positive: bool,
 }
 
-append_player_level_render_tasks :: proc(
-	tasks: ^[dynamic]Level_Layered_Render_Task,
+append_player_world_render_tasks :: proc(
+	tasks: ^[dynamic]World_Layered_Render_Task,
 	player: ^Player,
 ) -> bool {
 	assert(player.active)
@@ -43,7 +43,7 @@ append_player_level_render_tasks :: proc(
 		character_alpha = player.inv_time % 2 == 0 ? 0.5 : 0.7
 	}
 
-	character_task := Level_Layered_Render_Task {
+	character_task := World_Layered_Render_Task {
 		pos        = player.pos,
 		origin     = {0.5, 0.5},
 		scale      = {1.0, 1.0},
@@ -58,7 +58,7 @@ append_player_level_render_tasks :: proc(
 		return false
 	}
 
-	task: Level_Layered_Render_Task
+	task: World_Layered_Render_Task
 
 	if !player.shielding {
 		sword_rot := player.aim_dir + player.sword_rot_offs
@@ -91,29 +91,29 @@ append_player_level_render_tasks :: proc(
 	return true
 }
 
-spawn_player :: proc(pos: zf4.Vec_2D, level: ^Level) {
-	assert(!level.player.active)
-	mem.zero_item(&level.player)
-	level.player.active = true
-	level.player.pos = pos
-	level.player.hp = PLAYER_HP_LIMIT
+spawn_player :: proc(pos: zf4.Vec_2D, world: ^World) {
+	assert(!world.player.active)
+	mem.zero_item(&world.player)
+	world.player.active = true
+	world.player.pos = pos
+	world.player.hp = PLAYER_HP_LIMIT
 }
 
-damage_player :: proc(level: ^Level, dmg_info: Damage_Info) {
-	assert(level.player.inv_time >= 0)
+damage_player :: proc(world: ^World, dmg_info: Damage_Info) {
+	assert(world.player.inv_time >= 0)
 
-	if level.player.inv_time > 0 {
+	if world.player.inv_time > 0 {
 		return
 	}
 
 	assert(dmg_info.dmg > 0)
 
-	level.player.vel += dmg_info.kb
-	level.player.hp = max(level.player.hp - dmg_info.dmg, 0)
-	level.player.inv_time = PLAYER_INV_TIME_LIMIT
+	world.player.vel += dmg_info.kb
+	world.player.hp = max(world.player.hp - dmg_info.dmg, 0)
+	world.player.inv_time = PLAYER_INV_TIME_LIMIT
 
-	spawn_damage_text(level, dmg_info.dmg, level.player.pos)
-	apply_camera_shake(&level.cam, 2.0)
+	spawn_damage_text(world, dmg_info.dmg, world.player.pos)
+	apply_camera_shake(&world.cam, 2.0)
 }
 
 gen_player_damage_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {
