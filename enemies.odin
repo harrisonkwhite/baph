@@ -33,6 +33,7 @@ Enemy :: struct {
 	pos:         zf4.Vec_2D,
 	vel:         zf4.Vec_2D,
 	hp:          int,
+	attacking:   bool,
 	attack_time: int,
 	moving:      bool,
 	move_time:   int,
@@ -103,37 +104,62 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 
 	assert(enemy.type == Enemy_Type.Melee)
 
-	if enemy.move_time > 0 {
-		enemy.move_time -= 1
-	} else {
-		enemy.moving = !enemy.moving
-		enemy.move_time = 60
-		enemy.move_dir = zf4.calc_len_dir(1.0, rand.float32() * math.TAU)
+	if !world.player.active {
+		enemy.attacking = false
 	}
 
-	vel_targ := enemy.moving ? enemy.move_dir * 2.0 : {}
+	MOVE_SPD: f32 = 2.0
+
+	vel_targ: zf4.Vec_2D
+
+	if enemy.attacking {
+		player_dist := zf4.calc_dist(enemy.pos, world.player.pos)
+		player_dir := zf4.calc_normal_or_zero(world.player.pos - enemy.pos)
+
+		if player_dist > 40.0 {
+			vel_targ = player_dir * MOVE_SPD
+		}
+
+		enemy.moving = false
+		enemy.move_time = 0
+	} else {
+		if enemy.move_time > 0 {
+			enemy.move_time -= 1
+		} else {
+			enemy.moving = !enemy.moving
+			enemy.move_time = 60
+			enemy.move_dir = zf4.calc_len_dir(1.0, rand.float32() * math.TAU)
+		}
+
+		vel_targ = enemy.moving ? enemy.move_dir * MOVE_SPD : {}
+
+		enemy.attack_time = 0
+	}
+
 	enemy.vel += (vel_targ - enemy.vel) * 0.2
 	enemy.pos += enemy.vel
 
-	if enemy.attack_time < 60 {
-		enemy.attack_time += 1
-	} else {
-		attack_dir := zf4.calc_normal_or_zero(world.player.pos - enemy.pos)
-		ATTACK_HITBOX_OFFS_DIST :: 32.0
-		ATTACK_HITBOX_SIZE :: 32.0
-		ATTACK_KNOCKBACK :: 6.0
+	if enemy.attacking {
+		if enemy.attack_time < 60 {
+			enemy.attack_time += 1
+		} else {
+			attack_dir := zf4.calc_normal_or_zero(world.player.pos - enemy.pos)
+			ATTACK_HITBOX_OFFS_DIST :: 32.0
+			ATTACK_HITBOX_SIZE :: 32.0
+			ATTACK_KNOCKBACK :: 6.0
 
-		if !spawn_hitmask_quad(
-			enemy.pos + (attack_dir * ATTACK_HITBOX_OFFS_DIST),
-			{ATTACK_HITBOX_SIZE, ATTACK_HITBOX_SIZE},
-			{dmg = 1, kb = attack_dir * ATTACK_KNOCKBACK},
-			{Hitmask_Flag.Damage_Player},
-			world,
-		) {
-			return false
+			if !spawn_hitmask_quad(
+				enemy.pos + (attack_dir * ATTACK_HITBOX_OFFS_DIST),
+				{ATTACK_HITBOX_SIZE, ATTACK_HITBOX_SIZE},
+				{dmg = 1, kb = attack_dir * ATTACK_KNOCKBACK},
+				{Hitmask_Flag.Damage_Player},
+				world,
+			) {
+				return false
+			}
+
+			enemy.attack_time = 0
 		}
-
-		enemy.attack_time = 0
 	}
 
 	return true
@@ -261,6 +287,7 @@ damage_enemy :: proc(enemy_index: int, world: ^World, dmg_info: Damage_Info) {
 	enemy.vel += dmg_info.kb
 	enemy.hp = max(enemy.hp - dmg_info.dmg, 0)
 	enemy.flash_time = ENEMY_DMG_FLASH_TIME
+	enemy.attacking = true
 
 	spawn_damage_text(world, dmg_info.dmg, enemy.pos)
 

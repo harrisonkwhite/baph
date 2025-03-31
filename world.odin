@@ -325,19 +325,17 @@ world_tick :: proc(
 		targ := get_enemy(minion.targ, &world.enemies)
 
 		dest: zf4.Vec_2D
-		dest_dist_targ: f32
 
 		if targ == nil {
 			dest = world.player.pos + zf4.calc_len_dir(MINION_ORBIT_DIST, player_orbit_dir)
-			dest_dist_targ = 8.0
 		} else {
-			dest = targ.pos
-			dest_dist_targ = 40.0
+			targ_to_player_dir := zf4.calc_normal_or_zero(world.player.pos - targ.pos)
+			dest = targ.pos + (targ_to_player_dir * 40.0)
 		}
 
 		dest_dist := zf4.calc_dist(minion.pos, dest)
 		dest_dir := zf4.calc_normal_or_zero(dest - minion.pos)
-		vel_targ := dest_dist > dest_dist_targ ? dest_dir * 2.5 : {}
+		vel_targ := dest_dist > 8.0 ? dest_dir * 2.5 : {}
 		minion.vel += (vel_targ - minion.vel) * 0.2
 		minion.pos += minion.vel
 
@@ -345,7 +343,7 @@ world_tick :: proc(
 			if minion.attack_time < MINION_ATTACK_INTERVAL {
 				minion.attack_time += 1
 			} else {
-				attack_dir := dest_dir // TEMP?
+				attack_dir := zf4.calc_normal_or_zero(targ.pos - minion.pos)
 
 				if !spawn_hitmask_quad(
 					minion.pos + (attack_dir * MINION_ATTACK_HITBOX_OFFS_DIST),
