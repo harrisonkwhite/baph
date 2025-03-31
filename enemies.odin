@@ -50,16 +50,16 @@ ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
 		sprite = Sprite.Melee_Enemy,
 		hp_limit = 100,
 		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
-		contact_dmg = 1,
-		contact_kb = 8.0,
+		contact_dmg = 2,
+		contact_kb = 9.0,
 	},
 	Enemy_Type.Ranger = {
 		ai_func = ranger_enemy_ai,
-		sprite = Sprite.Melee_Enemy,
-		hp_limit = 100,
+		sprite = Sprite.Ranger_Enemy,
+		hp_limit = 70,
 		flags = {Enemy_Type_Flag.Deals_Contact_Damage},
 		contact_dmg = 1,
-		contact_kb = 8.0,
+		contact_kb = 4.0,
 	},
 }
 
@@ -132,6 +132,8 @@ append_enemy_world_render_tasks :: proc(
 	tasks: ^[dynamic]World_Layered_Render_Task,
 	enemies: ^Enemies,
 ) -> bool {
+	enemy_type_infos := ENEMY_TYPE_INFOS
+
 	for i in 0 ..< ENEMY_LIMIT {
 		if !enemies.activity[i] {
 			continue
@@ -145,7 +147,7 @@ append_enemy_world_render_tasks :: proc(
 			scale      = {1.0, 1.0},
 			rot        = 0.0,
 			alpha      = 1.0,
-			sprite     = Sprite.Melee_Enemy,
+			sprite     = enemy_type_infos[enemy.type].sprite,
 			flash_time = enemy.flash_time,
 			sort_depth = enemy.pos.y,
 		}

@@ -101,8 +101,11 @@ world_tick :: proc(
 		spawn_offs_dist := rand.float32_range(ENEMY_SPAWN_DIST_RANGE[0], ENEMY_SPAWN_DIST_RANGE[1])
 		spawn_pos := world.cam.pos_no_offs + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
 
-		// NOTE: Not handling fail case here.
-		spawn_enemy(Enemy_Type.Melee, spawn_pos, world)
+		enemy_type := rand.float32() < 0.7 ? Enemy_Type.Melee : Enemy_Type.Ranger
+
+		if !spawn_enemy(enemy_type, spawn_pos, world) {
+			fmt.println("Failed to spawn enemy!")
+		}
 
 		world.enemy_spawn_time = 0
 	}
