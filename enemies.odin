@@ -1,5 +1,6 @@
 package apocalypse
 
+import "core:fmt"
 import "core:math"
 import "core:math/rand"
 import "zf4"
@@ -30,21 +31,30 @@ ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
 }
 
 Enemy :: struct {
-	pos:         zf4.Vec_2D,
-	vel:         zf4.Vec_2D,
-	hp:          int,
-	attacking:   bool,
-	attack_time: int,
-	moving:      bool,
-	move_time:   int,
-	move_dir:    zf4.Vec_2D,
-	flash_time:  int,
-	type:        Enemy_Type,
+	pos:        zf4.Vec_2D,
+	vel:        zf4.Vec_2D,
+	hp:         int,
+	flash_time: int,
+	type:       Enemy_Type,
+	melee:      Melee_Enemy,
+	ranger:     Ranger_Enemy,
 }
 
 Enemy_Type :: enum {
 	Melee,
 	Ranger,
+}
+
+Melee_Enemy :: struct {
+	attacking:   bool,
+	attack_time: int,
+	moving:      bool,
+	move_time:   int,
+	move_dir:    zf4.Vec_2D,
+}
+
+Ranger_Enemy :: struct {
+	shoot_time: int,
 }
 
 Enemy_Type_Flag :: enum {
@@ -105,14 +115,14 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 	assert(enemy.type == Enemy_Type.Melee)
 
 	if !world.player.active {
-		enemy.attacking = false
+		enemy.melee.attacking = false
 	}
 
-	MOVE_SPD: f32 = 2.0
+	MOVE_SPD: f32 = 1.0
 
 	vel_targ: zf4.Vec_2D
 
-	if enemy.attacking {
+	if enemy.melee.attacking {
 		player_dist := zf4.calc_dist(enemy.pos, world.player.pos)
 		player_dir := zf4.calc_normal_or_zero(world.player.pos - enemy.pos)
 
@@ -120,28 +130,28 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 			vel_targ = player_dir * MOVE_SPD
 		}
 
-		enemy.moving = false
-		enemy.move_time = 0
+		enemy.melee.moving = false
+		enemy.melee.move_time = 0
 	} else {
-		if enemy.move_time > 0 {
-			enemy.move_time -= 1
+		if enemy.melee.move_time > 0 {
+			enemy.melee.move_time -= 1
 		} else {
-			enemy.moving = !enemy.moving
-			enemy.move_time = 60
-			enemy.move_dir = zf4.calc_len_dir(1.0, rand.float32() * math.TAU)
+			enemy.melee.moving = !enemy.melee.moving
+			enemy.melee.move_time = 60
+			enemy.melee.move_dir = zf4.calc_len_dir(1.0, rand.float32() * math.TAU)
 		}
 
-		vel_targ = enemy.moving ? enemy.move_dir * MOVE_SPD : {}
+		vel_targ = enemy.melee.moving ? enemy.melee.move_dir * MOVE_SPD : {}
 
-		enemy.attack_time = 0
+		enemy.melee.attack_time = 0
 	}
 
 	enemy.vel += (vel_targ - enemy.vel) * 0.2
 	enemy.pos += enemy.vel
 
-	if enemy.attacking {
-		if enemy.attack_time < 60 {
-			enemy.attack_time += 1
+	if enemy.melee.attacking {
+		if enemy.melee.attack_time < 60 {
+			enemy.melee.attack_time += 1
 		} else {
 			attack_dir := zf4.calc_normal_or_zero(world.player.pos - enemy.pos)
 			ATTACK_HITBOX_OFFS_DIST :: 32.0
@@ -158,7 +168,7 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 				return false
 			}
 
-			enemy.attack_time = 0
+			enemy.melee.attack_time = 0
 		}
 	}
 
@@ -176,6 +186,20 @@ ranger_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 
 	enemy.vel *= 0.8
 	enemy.pos += enemy.vel
+
+	if world.player.active {
+		if enemy.ranger.shoot_time < 60 {
+			enemy.ranger.shoot_time += 1
+		} else {
+			player_dir := zf4.calc_dir(world.player.pos - enemy.pos)
+
+			if !spawn_projectile(enemy.pos, 8.0, player_dir, 1, world) {
+				fmt.print("Failed to spawn projectile!") // NOTE: Should this be integrated into the function?
+			}
+
+			enemy.ranger.shoot_time = 0
+		}
+	}
 
 	return true
 }
@@ -291,7 +315,10 @@ damage_enemy :: proc(enemy_index: int, world: ^World, dmg_info: Damage_Info) {
 	enemy.vel += dmg_info.kb
 	enemy.hp = max(enemy.hp - dmg_info.dmg, 0)
 	enemy.flash_time = ENEMY_DMG_FLASH_TIME
-	enemy.attacking = true
+
+	if enemy.type == Enemy_Type.Melee {
+		enemy.melee.attacking = true
+	}
 
 	spawn_damage_text(world, dmg_info.dmg, enemy.pos)
 

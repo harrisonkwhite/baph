@@ -37,6 +37,8 @@ MINION_ATTACK_INTERVAL :: 60
 MINION_ATTACK_HITBOX_SIZE :: 32.0
 MINION_ATTACK_HITBOX_OFFS_DIST :: 40.0
 
+PROJECTILE_LIMIT :: 512
+
 HITMASK_LIMIT :: 64
 
 DAMAGE_TEXT_LIMIT :: 64
@@ -50,6 +52,8 @@ World :: struct {
 	minions:            [MINION_CNT]Minion,
 	enemies:            Enemies,
 	enemy_spawn_time:   int,
+	projectiles:        [PROJECTILE_LIMIT]Projectile,
+	proj_cnt:           int,
 	hitmasks:           [HITMASK_LIMIT]Hitmask,
 	hitmask_active_cnt: int,
 	dmg_texts:          [DAMAGE_TEXT_LIMIT]Damage_Text,
@@ -92,6 +96,13 @@ Minion :: struct {
 	vel:         zf4.Vec_2D,
 	targ:        Enemy_ID,
 	attack_time: int,
+}
+
+Projectile :: struct {
+	pos: zf4.Vec_2D,
+	vel: zf4.Vec_2D,
+	rot: f32,
+	dmg: int,
 }
 
 Hitmask :: struct {
@@ -413,6 +424,35 @@ world_tick :: proc(
 	}
 
 	//
+	// Projectiles
+	//
+	for i in 0 ..< world.proj_cnt {
+		proj := &world.projectiles[i]
+		proj.pos += proj.vel
+
+		// Handle player collision.
+		if world.player.active {
+			player_collider := gen_player_damage_collider(world.player.pos)
+			proj_collider, proj_collider_generated := alloc_projectile_collider(
+				proj,
+				context.temp_allocator,
+			)
+
+			if !proj_collider_generated {
+				return World_Tick_Result.Error
+			}
+
+			if zf4.does_poly_inters_with_rect(proj_collider, player_collider) {
+				damage_player(world, {dmg = proj.dmg, kb = proj.vel / 2.0})
+
+				// Destroy the projectile.
+				world.proj_cnt -= 1
+				world.projectiles[i] = world.projectiles[world.proj_cnt]
+			}
+		}
+	}
+
+	//
 	// Hitmask Collisions
 	//
 	for i in 0 ..< world.hitmask_active_cnt {
@@ -540,6 +580,10 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 	}
 
 	if !append_enemy_world_render_tasks(&render_tasks, &world.enemies) {
+		return false
+	}
+
+	if !append_projectile_world_render_tasks(&render_tasks, world.projectiles[:world.proj_cnt]) {
 		return false
 	}
 
@@ -812,6 +856,72 @@ append_minion_world_render_tasks :: proc(
 			alpha      = 1.0,
 			sprite     = sprite,
 			sort_depth = minion.pos.y + (f32(sprite_src_rects[sprite].height) / 2.0),
+		}
+
+		n, err := append(tasks, task)
+
+		if err != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+spawn_projectile :: proc(pos: zf4.Vec_2D, spd: f32, dir: f32, dmg: int, world: ^World) -> bool {
+	assert(world != nil)
+
+	if world.proj_cnt == PROJECTILE_LIMIT {
+		return false
+	}
+
+	proj := &world.projectiles[world.proj_cnt]
+	world.proj_cnt += 1
+	proj^ = {
+		pos = pos,
+		vel = zf4.calc_len_dir(spd, dir),
+		rot = dir,
+		dmg = dmg,
+	}
+	return true
+}
+
+alloc_projectile_collider :: proc(
+	proj: ^Projectile,
+	allocator := context.allocator,
+) -> (
+	zf4.Poly,
+	bool,
+) {
+	sprite_src_rects := SPRITE_SRC_RECTS
+	sprite_src_rect := sprite_src_rects[Sprite.Projectile]
+
+	return zf4.alloc_quad_poly_rotated(
+		proj.pos,
+		{f32(sprite_src_rect.width), f32(sprite_src_rect.height)},
+		{0.5, 0.5},
+		proj.rot,
+		allocator,
+	)
+}
+
+append_projectile_world_render_tasks :: proc(
+	tasks: ^[dynamic]World_Layered_Render_Task,
+	projectiles: []Projectile,
+) -> bool {
+	sprite_src_rects := SPRITE_SRC_RECTS
+
+	for &proj in projectiles {
+		sprite := Sprite.Projectile
+
+		task := World_Layered_Render_Task {
+			pos        = proj.pos,
+			origin     = {0.5, 0.5},
+			scale      = {1.0, 1.0},
+			rot        = proj.rot,
+			alpha      = 1.0,
+			sprite     = sprite,
+			sort_depth = proj.pos.y,
 		}
 
 		n, err := append(tasks, task)
