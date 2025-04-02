@@ -114,8 +114,10 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 
 	assert(enemy.type == Enemy_Type.Melee)
 
-	if !world.player.active {
+	if !world.player.active && enemy.melee.attacking {
 		enemy.melee.attacking = false
+		enemy.melee.moving = false
+		enemy.melee.move_time = 0
 	}
 
 	MOVE_SPD: f32 = 1.0
@@ -129,9 +131,6 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 		if player_dist > 40.0 {
 			vel_targ = player_dir * MOVE_SPD
 		}
-
-		enemy.melee.moving = false
-		enemy.melee.move_time = 0
 	} else {
 		if enemy.melee.move_time > 0 {
 			enemy.melee.move_time -= 1
@@ -161,8 +160,8 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 			if !spawn_hitmask_quad(
 				enemy.pos + (attack_dir * ATTACK_HITBOX_OFFS_DIST),
 				{ATTACK_HITBOX_SIZE, ATTACK_HITBOX_SIZE},
-				{dmg = 1, kb = attack_dir * ATTACK_KNOCKBACK},
-				{Hitmask_Flag.Damage_Player},
+				{dmg = 9, kb = attack_dir * ATTACK_KNOCKBACK},
+				{Damage_Flag.Damage_Player},
 				world,
 			) {
 				return false
@@ -193,7 +192,14 @@ ranger_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 		} else {
 			player_dir := zf4.calc_dir(world.player.pos - enemy.pos)
 
-			if !spawn_projectile(enemy.pos, 8.0, player_dir, 1, world) {
+			if !spawn_projectile(
+				enemy.pos,
+				8.0,
+				player_dir,
+				5,
+				{Damage_Flag.Damage_Player},
+				world,
+			) {
 				fmt.print("Failed to spawn projectile!") // NOTE: Should this be integrated into the function?
 			}
 

@@ -7,6 +7,8 @@ import "core:mem"
 import "core:slice"
 import "zf4"
 
+MINIONS_ACTIVE :: false
+
 PLAYER_MOVE_SPD :: 3.0
 PLAYER_VEL_LERP_FACTOR :: 0.2
 PLAYER_HP_LIMIT :: 100
@@ -16,7 +18,7 @@ PLAYER_SWORD_DMG :: 10
 PLAYER_SWORD_KNOCKBACK: f32 : 6.0
 PLAYER_SWORD_HITBOX_SIZE :: 32.0
 PLAYER_SWORD_HITBOX_OFFS_DIST: f32 : 40.0
-PLAYER_SWORD_OFFS_DIST: f32 : 6.0
+PLAYER_SWORD_OFFS_DIST: f32 : 8.0
 PLAYER_SWORD_ROT_OFFS: f32 : 130.0 * math.RAD_PER_DEG
 PLAYER_SWORD_ROT_OFFS_LERP: f32 : 0.4
 PLAYER_SHIELD_OFFS_DIST: f32 : 9.0
@@ -84,11 +86,17 @@ Player :: struct {
 	hp:                           int,
 	inv_time:                     int,
 	flash_time:                   int,
+	weapon:                       Weapon,
 	shielding:                    bool,
 	aim_dir:                      f32,
 	sword_rot_offs:               f32,
 	sword_rot_offs_axis_positive: bool,
 	shield_push_offs_dist:        f32,
+}
+
+Weapon :: enum {
+	Sword,
+	Bow,
 }
 
 Minion :: struct {
@@ -99,24 +107,25 @@ Minion :: struct {
 }
 
 Projectile :: struct {
-	pos: zf4.Vec_2D,
-	vel: zf4.Vec_2D,
-	rot: f32,
-	dmg: int,
+	pos:       zf4.Vec_2D,
+	vel:       zf4.Vec_2D,
+	rot:       f32,
+	dmg:       int,
+	dmg_flags: Damage_Flag_Set,
 }
 
 Hitmask :: struct {
 	collider: zf4.Poly,
 	dmg_info: Damage_Info,
-	flags:    Hitmask_Flag_Set,
+	flags:    Damage_Flag_Set,
 }
 
-Hitmask_Flag :: enum {
+Damage_Flag :: enum {
 	Damage_Player,
 	Damage_Enemy,
 }
 
-Hitmask_Flag_Set :: bit_set[Hitmask_Flag]
+Damage_Flag_Set :: bit_set[Damage_Flag]
 
 Damage_Info :: struct {
 	dmg: int,
@@ -204,6 +213,11 @@ world_tick :: proc(
 			zf4_data.input_state,
 		)
 
+		if zf4.is_key_pressed(zf4.Key_Code.Tab, zf4_data.input_state, zf4_data.input_state_last) {
+			world.player.weapon = Weapon(int(world.player.weapon) + 1)
+			world.player.weapon = Weapon(int(world.player.weapon) % len(Weapon))
+		}
+
 		move_axis := zf4.Vec_2D {
 			f32(i32(key_right) - i32(key_left)),
 			f32(i32(key_down) - i32(key_up)),
@@ -229,18 +243,30 @@ world_tick :: proc(
 			zf4_data.input_state_last,
 		) {
 			if !world.player.shielding {
-				if !spawn_hitmask_quad(
-					world.player.pos + (mouse_dir_vec * PLAYER_SWORD_HITBOX_OFFS_DIST),
-					{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
-					{dmg = PLAYER_SWORD_DMG, kb = mouse_dir_vec * PLAYER_SWORD_KNOCKBACK},
-					{Hitmask_Flag.Damage_Enemy},
-					world,
-				) {
-					return World_Tick_Result.Error
-				}
+				switch world.player.weapon {
+				case Weapon.Sword:
+					if !spawn_hitmask_quad(
+						world.player.pos + (mouse_dir_vec * PLAYER_SWORD_HITBOX_OFFS_DIST),
+						{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
+						{dmg = PLAYER_SWORD_DMG, kb = mouse_dir_vec * PLAYER_SWORD_KNOCKBACK},
+						{Damage_Flag.Damage_Enemy},
+						world,
+					) {
+						return World_Tick_Result.Error
+					}
 
-				world.player.sword_rot_offs_axis_positive =
-				!world.player.sword_rot_offs_axis_positive
+					world.player.sword_rot_offs_axis_positive =
+					!world.player.sword_rot_offs_axis_positive
+				case Weapon.Bow:
+					spawn_projectile(
+						world.player.pos,
+						12.0,
+						world.player.aim_dir,
+						1,
+						{Damage_Flag.Damage_Enemy},
+						world,
+					)
+				}
 			} else {
 				if !spawn_hitmask_quad(
 					world.player.pos + (mouse_dir_vec * PLAYER_SHIELD_HITBOX_OFFS_DIST),
@@ -249,7 +275,7 @@ world_tick :: proc(
 						dmg = PLAYER_SHIELD_PUSH_DMG,
 						kb = mouse_dir_vec * PLAYER_SHIELD_PUSH_KNOCKBACK,
 					},
-					{Hitmask_Flag.Damage_Enemy},
+					{Damage_Flag.Damage_Enemy},
 					world,
 				) {
 					return World_Tick_Result.Error
@@ -280,96 +306,97 @@ world_tick :: proc(
 	//
 	// Assigning Minions to Enemies
 	//
-
-	// For every untargeted enemy within the combat radius, assign the nearest minion with no current target to it.
-	for i in 0 ..< ENEMY_LIMIT {
-		if !world.enemies.activity[i] {
-			continue
-		}
-
-		enemy := &world.enemies.buf[i]
-		enemy_id := gen_enemy_id(i, &world.enemies)
-
-		player_dist := zf4.calc_dist(enemy.pos, world.player.pos)
-
-		if player_dist <= PLAYER_COMBAT_RADIUS {
-			enemy_already_targeted := false
-
-			for &minion in world.minions {
-				if minion.targ == enemy_id {
-					enemy_already_targeted = true
-				}
-			}
-
-			if enemy_already_targeted {
+	when MINIONS_ACTIVE {
+		// For every untargeted enemy within the combat radius, assign the nearest minion with no current target to it.
+		for i in 0 ..< ENEMY_LIMIT {
+			if !world.enemies.activity[i] {
 				continue
 			}
 
-			nearest_minion: ^Minion = nil
-			nearest_minion_dist: f32
+			enemy := &world.enemies.buf[i]
+			enemy_id := gen_enemy_id(i, &world.enemies)
 
-			for &minion in world.minions {
-				if does_enemy_exist(minion.targ, &world.enemies) {
+			player_dist := zf4.calc_dist(enemy.pos, world.player.pos)
+
+			if player_dist <= PLAYER_COMBAT_RADIUS {
+				enemy_already_targeted := false
+
+				for &minion in world.minions {
+					if minion.targ == enemy_id {
+						enemy_already_targeted = true
+					}
+				}
+
+				if enemy_already_targeted {
 					continue
 				}
 
-				enemy_to_minion_dist := zf4.calc_dist(enemy.pos, minion.pos)
+				nearest_minion: ^Minion = nil
+				nearest_minion_dist: f32
 
-				if nearest_minion == nil || enemy_to_minion_dist < nearest_minion_dist {
-					nearest_minion = &minion
-					nearest_minion_dist = enemy_to_minion_dist
+				for &minion in world.minions {
+					if does_enemy_exist(minion.targ, &world.enemies) {
+						continue
+					}
+
+					enemy_to_minion_dist := zf4.calc_dist(enemy.pos, minion.pos)
+
+					if nearest_minion == nil || enemy_to_minion_dist < nearest_minion_dist {
+						nearest_minion = &minion
+						nearest_minion_dist = enemy_to_minion_dist
+					}
+				}
+
+				if nearest_minion != nil {
+					nearest_minion.targ = gen_enemy_id(i, &world.enemies)
 				}
 			}
-
-			if nearest_minion != nil {
-				nearest_minion.targ = gen_enemy_id(i, &world.enemies)
-			}
-		}
-	}
-
-	//
-	// Minion AI
-	//
-	for &minion, i in world.minions {
-		player_orbit_dir := (f32(i) / MINION_CNT) * math.TAU
-
-		targ := get_enemy(minion.targ, &world.enemies)
-
-		dest: zf4.Vec_2D
-
-		if targ == nil {
-			dest = world.player.pos + zf4.calc_len_dir(MINION_ORBIT_DIST, player_orbit_dir)
-		} else {
-			targ_to_player_dir := zf4.calc_normal_or_zero(world.player.pos - targ.pos)
-			dest = targ.pos + (targ_to_player_dir * 40.0)
 		}
 
-		dest_dist := zf4.calc_dist(minion.pos, dest)
-		dest_dir := zf4.calc_normal_or_zero(dest - minion.pos)
-		vel_targ := dest_dist > 8.0 ? dest_dir * 2.5 : {}
-		minion.vel += (vel_targ - minion.vel) * 0.2
-		minion.pos += minion.vel
+		//
+		// Minion AI
+		//
+		for &minion, i in world.minions {
+			player_orbit_dir := (f32(i) / MINION_CNT) * math.TAU
 
-		if targ != nil {
-			if minion.attack_time < MINION_ATTACK_INTERVAL {
-				minion.attack_time += 1
+			targ := get_enemy(minion.targ, &world.enemies)
+
+			dest: zf4.Vec_2D
+
+			if targ == nil {
+				dest = world.player.pos + zf4.calc_len_dir(MINION_ORBIT_DIST, player_orbit_dir)
 			} else {
-				attack_dir := zf4.calc_normal_or_zero(targ.pos - minion.pos)
+				targ_to_player_dir := zf4.calc_normal_or_zero(world.player.pos - targ.pos)
+				dest = targ.pos + (targ_to_player_dir * 40.0)
+			}
 
-				if !spawn_hitmask_quad(
-					minion.pos + (attack_dir * MINION_ATTACK_HITBOX_OFFS_DIST),
-					{MINION_ATTACK_HITBOX_SIZE, MINION_ATTACK_HITBOX_SIZE},
-					{dmg = MINION_ATTACK_DMG, kb = attack_dir * MINION_ATTACK_KNOCKBACK},
-					{Hitmask_Flag.Damage_Enemy},
-					world,
-				) {
-					return World_Tick_Result.Error
+			dest_dist := zf4.calc_dist(minion.pos, dest)
+			dest_dir := zf4.calc_normal_or_zero(dest - minion.pos)
+			vel_targ := dest_dist > 8.0 ? dest_dir * 2.5 : {}
+			minion.vel += (vel_targ - minion.vel) * 0.2
+			minion.pos += minion.vel
+
+			if targ != nil {
+				if minion.attack_time < MINION_ATTACK_INTERVAL {
+					minion.attack_time += 1
+				} else {
+					attack_dir := zf4.calc_normal_or_zero(targ.pos - minion.pos)
+
+					if !spawn_hitmask_quad(
+						minion.pos + (attack_dir * MINION_ATTACK_HITBOX_OFFS_DIST),
+						{MINION_ATTACK_HITBOX_SIZE, MINION_ATTACK_HITBOX_SIZE},
+						{dmg = MINION_ATTACK_DMG, kb = attack_dir * MINION_ATTACK_KNOCKBACK},
+						{Damage_Flag.Damage_Enemy},
+						world,
+					) {
+						return World_Tick_Result.Error
+					}
+
+					minion.attack_time = 0
 				}
-
+			} else {
 				minion.attack_time = 0
 			}
-		} else {
-			minion.attack_time = 0
 		}
 	}
 
@@ -426,29 +453,61 @@ world_tick :: proc(
 	//
 	// Projectiles
 	//
+	// TODO: Set up some nice system in which projectile colliders (and colliders for other things too) only need to be set up once.
 	for i in 0 ..< world.proj_cnt {
 		proj := &world.projectiles[i]
 		proj.pos += proj.vel
 
-		// Handle player collision.
-		if world.player.active {
-			player_collider := gen_player_damage_collider(world.player.pos)
-			proj_collider, proj_collider_generated := alloc_projectile_collider(
-				proj,
-				context.temp_allocator,
-			)
+		proj_collider, proj_collider_generated := alloc_projectile_collider(
+			proj,
+			context.temp_allocator,
+		)
 
-			if !proj_collider_generated {
-				return World_Tick_Result.Error
+		if !proj_collider_generated {
+			return World_Tick_Result.Error
+		}
+
+		dmg_info := Damage_Info {
+			dmg = proj.dmg,
+			kb  = proj.vel / 2.0,
+		}
+
+		collided := false
+
+		if Damage_Flag.Damage_Player in proj.dmg_flags {
+			// Handle player collision.
+			if world.player.active {
+				player_dmg_collider := gen_player_damage_collider(world.player.pos)
+
+				if zf4.does_poly_inters_with_rect(proj_collider, player_dmg_collider) {
+					damage_player(world, dmg_info)
+					collided = true
+				}
 			}
+		}
 
-			if zf4.does_poly_inters_with_rect(proj_collider, player_collider) {
-				damage_player(world, {dmg = proj.dmg, kb = proj.vel / 2.0})
+		if Damage_Flag.Damage_Enemy in proj.dmg_flags {
+			// Handle enemy collisions.
+			for j in 0 ..< ENEMY_LIMIT {
+				if !world.enemies.activity[j] {
+					continue
+				}
 
-				// Destroy the projectile.
-				world.proj_cnt -= 1
-				world.projectiles[i] = world.projectiles[world.proj_cnt]
+				enemy := &world.enemies.buf[j]
+				enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
+
+				if zf4.does_poly_inters_with_rect(proj_collider, enemy_dmg_collider) {
+					damage_enemy(j, world, dmg_info)
+					collided = true
+					break
+				}
 			}
+		}
+
+		// Destroy the projectile.
+		if collided {
+			world.proj_cnt -= 1
+			world.projectiles[i] = world.projectiles[world.proj_cnt]
 		}
 	}
 
@@ -458,7 +517,7 @@ world_tick :: proc(
 	for i in 0 ..< world.hitmask_active_cnt {
 		hm := &world.hitmasks[i]
 
-		if Hitmask_Flag.Damage_Player in hm.flags {
+		if Damage_Flag.Damage_Player in hm.flags {
 			if zf4.does_poly_inters_with_rect(
 				hm.collider,
 				gen_player_damage_collider(world.player.pos),
@@ -467,7 +526,7 @@ world_tick :: proc(
 			}
 		}
 
-		if Hitmask_Flag.Damage_Enemy in hm.flags {
+		if Damage_Flag.Damage_Enemy in hm.flags {
 			for j in 0 ..< ENEMY_LIMIT {
 				if !world.enemies.activity[j] {
 					continue
@@ -516,21 +575,26 @@ world_tick :: proc(
 	// Camera
 	//
 	{
-		mouse_cam_pos := display_to_camera_pos(
-			zf4_data.input_state.mouse_pos,
-			&world.cam,
-			zf4_data.window_state_cache.size,
-		)
-		player_to_mouse_cam_pos_dist := zf4.calc_dist(world.player.pos, mouse_cam_pos)
-		player_to_mouse_cam_pos_dir := zf4.calc_normal_or_zero(mouse_cam_pos - world.player.pos)
+		dest := world.player.pos
 
-		look_dist :=
-			CAMERA_LOOK_DIST_LIMIT *
-			min(player_to_mouse_cam_pos_dist / CAMERA_LOOK_DIST_SCALAR_DIST, 1.0)
+		if world.player.active {
+			mouse_cam_pos := display_to_camera_pos(
+				zf4_data.input_state.mouse_pos,
+				&world.cam,
+				zf4_data.window_state_cache.size,
+			)
+			player_to_mouse_cam_pos_dist := zf4.calc_dist(world.player.pos, mouse_cam_pos)
+			player_to_mouse_cam_pos_dir := zf4.calc_normal_or_zero(
+				mouse_cam_pos - world.player.pos,
+			)
 
-		look_offs := player_to_mouse_cam_pos_dir * look_dist
+			look_dist :=
+				CAMERA_LOOK_DIST_LIMIT *
+				min(player_to_mouse_cam_pos_dist / CAMERA_LOOK_DIST_SCALAR_DIST, 1.0)
 
-		dest := world.player.pos + look_offs
+			dest += player_to_mouse_cam_pos_dir * look_dist
+		}
+
 		world.cam.pos_no_offs = math.lerp(world.cam.pos_no_offs, dest, f32(CAMERA_POS_LERP_FACTOR))
 
 		world.cam.shake *= CAMERA_SHAKE_MULT
@@ -575,8 +639,10 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		}
 	}
 
-	if !append_minion_world_render_tasks(&render_tasks, world.minions[:]) {
-		return false
+	when MINIONS_ACTIVE {
+		if !append_minion_world_render_tasks(&render_tasks, world.minions[:]) {
+			return false
+		}
 	}
 
 	if !append_enemy_world_render_tasks(&render_tasks, &world.enemies) {
@@ -735,12 +801,7 @@ gen_collider_from_sprite :: proc(
 
 is_player_valid :: proc(player: ^Player) -> bool {
 	assert(player != nil)
-
-	if mem.check_zero_ptr(player, size_of(player^)) {
-		return true
-	}
-
-	return player.active && player.hp >= 0 && player.inv_time >= 0 && player.flash_time >= 0
+	return player.hp >= 0 && player.inv_time >= 0 && player.flash_time >= 0
 }
 
 append_player_world_render_tasks :: proc(
@@ -778,16 +839,18 @@ append_player_world_render_tasks :: proc(
 	task: World_Layered_Render_Task
 
 	if !player.shielding {
-		sword_rot := player.aim_dir + player.sword_rot_offs
+		if player.weapon == Weapon.Sword {
+			sword_rot := player.aim_dir + player.sword_rot_offs
 
-		task = {
-			pos        = player.pos + zf4.calc_len_dir(PLAYER_SWORD_OFFS_DIST, sword_rot),
-			origin     = {0.0, 0.5},
-			scale      = {1.0, 1.0},
-			rot        = sword_rot,
-			alpha      = 1.0,
-			sprite     = Sprite.Sword,
-			sort_depth = character_task.sort_depth + 1.0,
+			task = {
+				pos        = player.pos + zf4.calc_len_dir(PLAYER_SWORD_OFFS_DIST, sword_rot),
+				origin     = {0.0, 0.5},
+				scale      = {1.0, 1.0},
+				rot        = sword_rot,
+				alpha      = 1.0,
+				sprite     = Sprite.Sword,
+				sort_depth = character_task.sort_depth + 1.0,
+			}
 		}
 	} else {
 		task = {
@@ -868,20 +931,29 @@ append_minion_world_render_tasks :: proc(
 	return true
 }
 
-spawn_projectile :: proc(pos: zf4.Vec_2D, spd: f32, dir: f32, dmg: int, world: ^World) -> bool {
+spawn_projectile :: proc(
+	pos: zf4.Vec_2D,
+	spd: f32,
+	dir: f32,
+	dmg: int,
+	dmg_flags: Damage_Flag_Set,
+	world: ^World,
+) -> bool {
 	assert(world != nil)
 
 	if world.proj_cnt == PROJECTILE_LIMIT {
+		fmt.print("Failed to spawn projectile due to insufficient space!")
 		return false
 	}
 
 	proj := &world.projectiles[world.proj_cnt]
 	world.proj_cnt += 1
 	proj^ = {
-		pos = pos,
-		vel = zf4.calc_len_dir(spd, dir),
-		rot = dir,
-		dmg = dmg,
+		pos       = pos,
+		vel       = zf4.calc_len_dir(spd, dir),
+		rot       = dir,
+		dmg       = dmg,
+		dmg_flags = dmg_flags,
 	}
 	return true
 }
@@ -938,7 +1010,7 @@ spawn_hitmask_quad :: proc(
 	pos: zf4.Vec_2D,
 	size: zf4.Vec_2D,
 	dmg_info: Damage_Info,
-	flags: Hitmask_Flag_Set,
+	flags: Damage_Flag_Set,
 	world: ^World,
 	allocator := context.allocator,
 ) -> bool {
