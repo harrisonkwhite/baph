@@ -14,27 +14,6 @@ PLAYER_VEL_LERP_FACTOR :: 0.2
 PLAYER_HP_LIMIT :: 100
 PLAYER_INV_TIME_LIMIT :: 30
 PLAYER_DMG_FLASH_TIME :: 5
-PLAYER_SWORD_DMG :: 10
-PLAYER_SWORD_KNOCKBACK: f32 : 6.0
-PLAYER_SWORD_HITBOX_SIZE :: 32.0
-PLAYER_SWORD_HITBOX_OFFS_DIST: f32 : 40.0
-PLAYER_SWORD_OFFS_DIST: f32 : 8.0
-PLAYER_SWORD_ROT_OFFS: f32 : 125.0 * math.RAD_PER_DEG
-PLAYER_SWORD_ROT_OFFS_LERP: f32 : 0.4
-PLAYER_SWORD_CHARGE_TIME :: 30
-PLAYER_SWORD_CHARGE_MOVE_SPD_MULT :: 0.6
-PLAYER_SWORD_CHARGE_ROT_TIME_MULT :: 0.4 // The percentage point in the time-up at which charge rotation starts.
-PLAYER_SWORD_CHARGE_ROT_OFFS :: 25.0 * math.RAD_PER_DEG
-PLAYER_SWORD_CHARGE_DMG_INCREASE :: 5
-PLAYER_SWORD_CHARGE_KNOCKBACK_SCALE :: 1.5
-PLAYER_SHIELD_OFFS_DIST: f32 : 9.0
-PLAYER_SHIELD_MOVE_SPD_MULT: f32 : 0.6
-PLAYER_SHIELD_PUSH_DMG :: 1
-PLAYER_SHIELD_PUSH_KNOCKBACK: f32 : 20.0
-PLAYER_SHIELD_HITBOX_SIZE :: 32
-PLAYER_SHIELD_HITBOX_OFFS_DIST: f32 : 40.0
-PLAYER_SHIELD_PUSH_OFFS_DIST: f32 : 12.0
-PLAYER_SHIELD_PUSH_OFFS_DIST_LERP: f32 : 0.8
 PLAYER_COMBAT_RADIUS :: 256.0
 
 MINION_CNT :: 5
@@ -83,27 +62,6 @@ World_Tick_Result :: enum {
 	Normal,
 	Go_To_Title,
 	Error,
-}
-
-Player :: struct {
-	active:                       bool,
-	pos:                          zf4.Vec_2D,
-	vel:                          zf4.Vec_2D,
-	hp:                           int,
-	inv_time:                     int,
-	flash_time:                   int,
-	weapon:                       Weapon,
-	shielding:                    bool,
-	aim_dir:                      f32,
-	sword_rot_offs:               f32,
-	sword_rot_offs_axis_positive: bool,
-	sword_charge_time:            int,
-	shield_push_offs_dist:        f32,
-}
-
-Weapon :: enum {
-	Sword,
-	Bow,
 }
 
 Minion :: struct {
@@ -192,190 +150,9 @@ world_tick :: proc(
 	//
 	// Player
 	//
-	assert(is_player_valid(&world.player))
-
 	if world.player.active {
-		shield_input_down := is_input_down(
-			&game_config.input_binding_settings[Input_Binding.Shield],
-			zf4_data.input_state,
-		)
-
-		if !world.player.shielding {
-			can_shield := true
-
-			if world.player.weapon == Weapon.Sword && world.player.sword_charge_time > 0 {
-				can_shield = false
-			}
-
-			if can_shield && shield_input_down {
-				world.player.shielding = true
-			}
-		} else {
-			world.player.shielding = shield_input_down
-		}
-
-		key_right := is_input_down(
-			&game_config.input_binding_settings[Input_Binding.Move_Right],
-			zf4_data.input_state,
-		)
-
-		key_left := is_input_down(
-			&game_config.input_binding_settings[Input_Binding.Move_Left],
-			zf4_data.input_state,
-		)
-
-		key_down := is_input_down(
-			&game_config.input_binding_settings[Input_Binding.Move_Down],
-			zf4_data.input_state,
-		)
-
-		key_up := is_input_down(
-			&game_config.input_binding_settings[Input_Binding.Move_Up],
-			zf4_data.input_state,
-		)
-
-		if zf4.is_key_pressed(zf4.Key_Code.Tab, zf4_data.input_state, zf4_data.input_state_last) {
-			world.player.weapon = Weapon(int(world.player.weapon) + 1)
-			world.player.weapon = Weapon(int(world.player.weapon) % len(Weapon))
-		}
-
-		move_axis := zf4.Vec_2D {
-			f32(i32(key_right) - i32(key_left)),
-			f32(i32(key_down) - i32(key_up)),
-		}
-
-		move_dir := zf4.calc_normal_or_zero(move_axis)
-
-		move_spd_mult: f32 = 1.0
-
-		if world.player.shielding {
-			move_spd_mult *= PLAYER_SHIELD_MOVE_SPD_MULT
-		}
-
-		move_spd_mult *=
-			PLAYER_SWORD_CHARGE_MOVE_SPD_MULT +
-			((1.0 - PLAYER_SWORD_CHARGE_MOVE_SPD_MULT) *
-					(1.0 - (f32(world.player.sword_charge_time) / PLAYER_SWORD_CHARGE_TIME)))
-
-		vel_lerp_targ := move_dir * PLAYER_MOVE_SPD * move_spd_mult
-		world.player.vel = math.lerp(world.player.vel, vel_lerp_targ, f32(PLAYER_VEL_LERP_FACTOR))
-
-		world.player.pos += world.player.vel
-
-		mouse_dir_vec := zf4.calc_normal_or_zero(mouse_cam_pos - world.player.pos)
-
-		world.player.aim_dir = zf4.calc_dir(mouse_dir_vec)
-
-		if !world.player.shielding {
-			switch world.player.weapon {
-			case Weapon.Sword:
-				if is_input_down(
-					&game_config.input_binding_settings[Input_Binding.Attack],
-					zf4_data.input_state,
-				) {
-					if world.player.sword_charge_time < PLAYER_SWORD_CHARGE_TIME {
-						world.player.sword_charge_time += 1
-					}
-				} else if is_input_released(
-					&game_config.input_binding_settings[Input_Binding.Attack],
-					zf4_data.input_state,
-					zf4_data.input_state_last,
-				) {
-					switch world.player.weapon {
-					case Weapon.Sword:
-						dmg_info := Damage_Info {
-							dmg = PLAYER_SWORD_DMG,
-							kb  = mouse_dir_vec * PLAYER_SWORD_KNOCKBACK,
-						}
-
-						charge_scalar :=
-							f32(world.player.sword_charge_time) / PLAYER_SWORD_CHARGE_TIME
-
-						dmg_info.dmg += int(PLAYER_SWORD_CHARGE_DMG_INCREASE * charge_scalar)
-						dmg_info.kb *=
-							((f32(PLAYER_SWORD_CHARGE_KNOCKBACK_SCALE) - 1.0) * charge_scalar) +
-							1.0
-
-						if !spawn_hitmask_quad(
-							world.player.pos + (mouse_dir_vec * PLAYER_SWORD_HITBOX_OFFS_DIST),
-							{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
-							dmg_info,
-							{Damage_Flag.Damage_Enemy},
-							world,
-						) {
-							return World_Tick_Result.Error
-						}
-
-						world.player.sword_rot_offs_axis_positive =
-						!world.player.sword_rot_offs_axis_positive
-					case Weapon.Bow:
-						spawn_projectile(
-							world.player.pos,
-							12.0,
-							world.player.aim_dir,
-							1,
-							{Damage_Flag.Damage_Enemy},
-							world,
-						)
-					}
-
-					world.player.sword_charge_time = 0
-				}
-
-			case Weapon.Bow:
-				if is_input_pressed(
-					&game_config.input_binding_settings[Input_Binding.Attack],
-					zf4_data.input_state,
-					zf4_data.input_state_last,
-				) {
-					spawn_projectile(
-						world.player.pos,
-						12.0,
-						world.player.aim_dir,
-						1,
-						{Damage_Flag.Damage_Enemy},
-						world,
-					)
-				}
-			}
-		} else {
-			if is_input_pressed(
-				&game_config.input_binding_settings[Input_Binding.Attack],
-				zf4_data.input_state,
-				zf4_data.input_state_last,
-			) {
-				if !spawn_hitmask_quad(
-					world.player.pos + (mouse_dir_vec * PLAYER_SHIELD_HITBOX_OFFS_DIST),
-					{PLAYER_SHIELD_HITBOX_SIZE, PLAYER_SHIELD_HITBOX_SIZE},
-					{
-						dmg = PLAYER_SHIELD_PUSH_DMG,
-						kb = mouse_dir_vec * PLAYER_SHIELD_PUSH_KNOCKBACK,
-					},
-					{Damage_Flag.Damage_Enemy},
-					world,
-				) {
-					return World_Tick_Result.Error
-				}
-
-				world.player.shield_push_offs_dist = PLAYER_SHIELD_PUSH_OFFS_DIST
-			}
-		}
-
-		sword_rot_offs_dest :=
-			world.player.sword_rot_offs_axis_positive ? PLAYER_SWORD_ROT_OFFS : -PLAYER_SWORD_ROT_OFFS
-
-		world.player.sword_rot_offs +=
-			(sword_rot_offs_dest - world.player.sword_rot_offs) * PLAYER_SWORD_ROT_OFFS_LERP
-
-		world.player.shield_push_offs_dist -=
-			world.player.shield_push_offs_dist * PLAYER_SWORD_ROT_OFFS_LERP
-
-		if world.player.inv_time > 0 {
-			world.player.inv_time -= 1
-		}
-
-		if world.player.flash_time > 0 {
-			world.player.flash_time -= 1
+		if !run_player_tick(world, game_config, zf4_data) {
+			return World_Tick_Result.Error
 		}
 	}
 
@@ -710,7 +487,7 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 	render_tasks.allocator = context.temp_allocator
 
 	if world.player.active {
-		if !append_player_world_render_tasks(&render_tasks, &world.player) {
+		if !append_player_render_tasks(&render_tasks, &world.player) {
 			return false
 		}
 	}
@@ -873,124 +650,6 @@ gen_collider_from_sprite :: proc(
 		f32(src_rects[sprite].width),
 		f32(src_rects[sprite].height),
 	}
-}
-
-is_player_valid :: proc(player: ^Player) -> bool {
-	assert(player != nil)
-	return player.hp >= 0 && player.inv_time >= 0 && player.flash_time >= 0
-}
-
-append_player_world_render_tasks :: proc(
-	tasks: ^[dynamic]World_Layered_Render_Task,
-	player: ^Player,
-) -> bool {
-	assert(tasks != nil)
-	assert(player != nil)
-	assert(is_player_valid(player))
-	assert(player.active)
-
-	character_alpha: f32 = 1.0
-
-	if player.inv_time > 0 {
-		character_alpha = player.inv_time % 2 == 0 ? 0.5 : 0.7
-	}
-
-	sprite_src_rects := SPRITE_SRC_RECTS
-
-	character_task := World_Layered_Render_Task {
-		pos        = player.pos,
-		origin     = {0.5, 0.5},
-		scale      = {1.0, 1.0},
-		rot        = 0.0,
-		alpha      = character_alpha,
-		sprite     = Sprite.Player,
-		flash_time = player.flash_time,
-		sort_depth = player.pos.y + (f32(sprite_src_rects[Sprite.Player].height) / 2.0),
-	}
-
-	if n, err := append(tasks, character_task); err != nil {
-		return false
-	}
-
-	task: World_Layered_Render_Task
-
-	if !player.shielding {
-		if player.weapon == Weapon.Sword {
-			sword_rot_offs_charge_time := max(
-				f32(player.sword_charge_time) -
-				(PLAYER_SWORD_CHARGE_TIME * PLAYER_SWORD_CHARGE_ROT_TIME_MULT),
-				0.0,
-			)
-			sword_rot_offs_charge_time_max := f32(
-				PLAYER_SWORD_CHARGE_TIME * (1.0 - PLAYER_SWORD_CHARGE_ROT_TIME_MULT),
-			)
-			sword_rot_offs_charge_offs :=
-				PLAYER_SWORD_CHARGE_ROT_OFFS *
-				(sword_rot_offs_charge_time / sword_rot_offs_charge_time_max)
-
-			sword_rot :=
-				player.aim_dir +
-				player.sword_rot_offs +
-				(sword_rot_offs_charge_offs * math.sign(player.sword_rot_offs))
-
-			task = {
-				pos        = player.pos + zf4.calc_len_dir(PLAYER_SWORD_OFFS_DIST, sword_rot),
-				origin     = {0.0, 0.5},
-				scale      = {1.0, 1.0},
-				rot        = sword_rot,
-				alpha      = 1.0,
-				sprite     = Sprite.Sword,
-				sort_depth = character_task.sort_depth + 1.0,
-			}
-		}
-	} else {
-		task = {
-			pos        = player.pos + zf4.calc_len_dir(PLAYER_SHIELD_OFFS_DIST + player.shield_push_offs_dist, player.aim_dir),
-			origin     = {0.0, 0.5},
-			scale      = {1.0, 1.0},
-			rot        = player.aim_dir,
-			alpha      = 1.0,
-			sprite     = Sprite.Shield,
-			sort_depth = character_task.sort_depth + 1.0,
-		}
-	}
-
-	if n, err := append(tasks, task); err != nil {
-		return false
-	}
-
-	return true
-}
-
-spawn_player :: proc(pos: zf4.Vec_2D, world: ^World) {
-	assert(!world.player.active)
-	mem.zero_item(&world.player)
-	world.player.active = true
-	world.player.pos = pos
-	world.player.hp = PLAYER_HP_LIMIT
-}
-
-damage_player :: proc(world: ^World, dmg_info: Damage_Info) {
-	assert(world.player.inv_time >= 0)
-
-	if world.player.inv_time > 0 {
-		return
-	}
-
-	assert(dmg_info.dmg > 0)
-
-	world.player.vel += dmg_info.kb
-	world.player.hp = max(world.player.hp - dmg_info.dmg, 0)
-	world.player.inv_time = PLAYER_INV_TIME_LIMIT
-	world.player.flash_time = PLAYER_DMG_FLASH_TIME
-
-	spawn_damage_text(world, dmg_info.dmg, world.player.pos)
-
-	apply_camera_shake(&world.cam, 2.0)
-}
-
-gen_player_damage_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {
-	return gen_collider_from_sprite(Sprite.Player, player_pos)
 }
 
 append_minion_world_render_tasks :: proc(
