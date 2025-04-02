@@ -19,8 +19,14 @@ PLAYER_SWORD_KNOCKBACK: f32 : 6.0
 PLAYER_SWORD_HITBOX_SIZE :: 32.0
 PLAYER_SWORD_HITBOX_OFFS_DIST: f32 : 40.0
 PLAYER_SWORD_OFFS_DIST: f32 : 8.0
-PLAYER_SWORD_ROT_OFFS: f32 : 130.0 * math.RAD_PER_DEG
+PLAYER_SWORD_ROT_OFFS: f32 : 125.0 * math.RAD_PER_DEG
 PLAYER_SWORD_ROT_OFFS_LERP: f32 : 0.4
+PLAYER_SWORD_CHARGE_TIME :: 30
+PLAYER_SWORD_CHARGE_MOVE_SPD_MULT :: 0.6
+PLAYER_SWORD_CHARGE_ROT_TIME_MULT :: 0.4 // The percentage point in the time-up at which charge rotation starts.
+PLAYER_SWORD_CHARGE_ROT_OFFS :: 25.0 * math.RAD_PER_DEG
+PLAYER_SWORD_CHARGE_DMG_INCREASE :: 5
+PLAYER_SWORD_CHARGE_KNOCKBACK_SCALE :: 1.5
 PLAYER_SHIELD_OFFS_DIST: f32 : 9.0
 PLAYER_SHIELD_MOVE_SPD_MULT: f32 : 0.6
 PLAYER_SHIELD_PUSH_DMG :: 1
@@ -91,6 +97,7 @@ Player :: struct {
 	aim_dir:                      f32,
 	sword_rot_offs:               f32,
 	sword_rot_offs_axis_positive: bool,
+	sword_charge_time:            int,
 	shield_push_offs_dist:        f32,
 }
 
@@ -188,10 +195,24 @@ world_tick :: proc(
 	assert(is_player_valid(&world.player))
 
 	if world.player.active {
-		world.player.shielding = is_input_down(
+		shield_input_down := is_input_down(
 			&game_config.input_binding_settings[Input_Binding.Shield],
 			zf4_data.input_state,
 		)
+
+		if !world.player.shielding {
+			can_shield := true
+
+			if world.player.weapon == Weapon.Sword && world.player.sword_charge_time > 0 {
+				can_shield = false
+			}
+
+			if can_shield && shield_input_down {
+				world.player.shielding = true
+			}
+		} else {
+			world.player.shielding = shield_input_down
+		}
 
 		key_right := is_input_down(
 			&game_config.input_binding_settings[Input_Binding.Move_Right],
@@ -225,10 +246,18 @@ world_tick :: proc(
 
 		move_dir := zf4.calc_normal_or_zero(move_axis)
 
-		vel_lerp_targ :=
-			move_dir *
-			PLAYER_MOVE_SPD *
-			(world.player.shielding ? PLAYER_SHIELD_MOVE_SPD_MULT : 1.0)
+		move_spd_mult: f32 = 1.0
+
+		if world.player.shielding {
+			move_spd_mult *= PLAYER_SHIELD_MOVE_SPD_MULT
+		}
+
+		move_spd_mult *=
+			PLAYER_SWORD_CHARGE_MOVE_SPD_MULT +
+			((1.0 - PLAYER_SWORD_CHARGE_MOVE_SPD_MULT) *
+					(1.0 - (f32(world.player.sword_charge_time) / PLAYER_SWORD_CHARGE_TIME)))
+
+		vel_lerp_targ := move_dir * PLAYER_MOVE_SPD * move_spd_mult
 		world.player.vel = math.lerp(world.player.vel, vel_lerp_targ, f32(PLAYER_VEL_LERP_FACTOR))
 
 		world.player.pos += world.player.vel
@@ -237,27 +266,68 @@ world_tick :: proc(
 
 		world.player.aim_dir = zf4.calc_dir(mouse_dir_vec)
 
-		if is_input_pressed(
-			&game_config.input_binding_settings[Input_Binding.Attack],
-			zf4_data.input_state,
-			zf4_data.input_state_last,
-		) {
-			if !world.player.shielding {
-				switch world.player.weapon {
-				case Weapon.Sword:
-					if !spawn_hitmask_quad(
-						world.player.pos + (mouse_dir_vec * PLAYER_SWORD_HITBOX_OFFS_DIST),
-						{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
-						{dmg = PLAYER_SWORD_DMG, kb = mouse_dir_vec * PLAYER_SWORD_KNOCKBACK},
-						{Damage_Flag.Damage_Enemy},
-						world,
-					) {
-						return World_Tick_Result.Error
+		if !world.player.shielding {
+			switch world.player.weapon {
+			case Weapon.Sword:
+				if is_input_down(
+					&game_config.input_binding_settings[Input_Binding.Attack],
+					zf4_data.input_state,
+				) {
+					if world.player.sword_charge_time < PLAYER_SWORD_CHARGE_TIME {
+						world.player.sword_charge_time += 1
+					}
+				} else if is_input_released(
+					&game_config.input_binding_settings[Input_Binding.Attack],
+					zf4_data.input_state,
+					zf4_data.input_state_last,
+				) {
+					switch world.player.weapon {
+					case Weapon.Sword:
+						dmg_info := Damage_Info {
+							dmg = PLAYER_SWORD_DMG,
+							kb  = mouse_dir_vec * PLAYER_SWORD_KNOCKBACK,
+						}
+
+						charge_scalar :=
+							f32(world.player.sword_charge_time) / PLAYER_SWORD_CHARGE_TIME
+
+						dmg_info.dmg += int(PLAYER_SWORD_CHARGE_DMG_INCREASE * charge_scalar)
+						dmg_info.kb *=
+							((f32(PLAYER_SWORD_CHARGE_KNOCKBACK_SCALE) - 1.0) * charge_scalar) +
+							1.0
+
+						if !spawn_hitmask_quad(
+							world.player.pos + (mouse_dir_vec * PLAYER_SWORD_HITBOX_OFFS_DIST),
+							{PLAYER_SWORD_HITBOX_SIZE, PLAYER_SWORD_HITBOX_SIZE},
+							dmg_info,
+							{Damage_Flag.Damage_Enemy},
+							world,
+						) {
+							return World_Tick_Result.Error
+						}
+
+						world.player.sword_rot_offs_axis_positive =
+						!world.player.sword_rot_offs_axis_positive
+					case Weapon.Bow:
+						spawn_projectile(
+							world.player.pos,
+							12.0,
+							world.player.aim_dir,
+							1,
+							{Damage_Flag.Damage_Enemy},
+							world,
+						)
 					}
 
-					world.player.sword_rot_offs_axis_positive =
-					!world.player.sword_rot_offs_axis_positive
-				case Weapon.Bow:
+					world.player.sword_charge_time = 0
+				}
+
+			case Weapon.Bow:
+				if is_input_pressed(
+					&game_config.input_binding_settings[Input_Binding.Attack],
+					zf4_data.input_state,
+					zf4_data.input_state_last,
+				) {
 					spawn_projectile(
 						world.player.pos,
 						12.0,
@@ -267,7 +337,13 @@ world_tick :: proc(
 						world,
 					)
 				}
-			} else {
+			}
+		} else {
+			if is_input_pressed(
+				&game_config.input_binding_settings[Input_Binding.Attack],
+				zf4_data.input_state,
+				zf4_data.input_state_last,
+			) {
 				if !spawn_hitmask_quad(
 					world.player.pos + (mouse_dir_vec * PLAYER_SHIELD_HITBOX_OFFS_DIST),
 					{PLAYER_SHIELD_HITBOX_SIZE, PLAYER_SHIELD_HITBOX_SIZE},
@@ -840,7 +916,22 @@ append_player_world_render_tasks :: proc(
 
 	if !player.shielding {
 		if player.weapon == Weapon.Sword {
-			sword_rot := player.aim_dir + player.sword_rot_offs
+			sword_rot_offs_charge_time := max(
+				f32(player.sword_charge_time) -
+				(PLAYER_SWORD_CHARGE_TIME * PLAYER_SWORD_CHARGE_ROT_TIME_MULT),
+				0.0,
+			)
+			sword_rot_offs_charge_time_max := f32(
+				PLAYER_SWORD_CHARGE_TIME * (1.0 - PLAYER_SWORD_CHARGE_ROT_TIME_MULT),
+			)
+			sword_rot_offs_charge_offs :=
+				PLAYER_SWORD_CHARGE_ROT_OFFS *
+				(sword_rot_offs_charge_time / sword_rot_offs_charge_time_max)
+
+			sword_rot :=
+				player.aim_dir +
+				player.sword_rot_offs +
+				(sword_rot_offs_charge_offs * math.sign(player.sword_rot_offs))
 
 			task = {
 				pos        = player.pos + zf4.calc_len_dir(PLAYER_SWORD_OFFS_DIST, sword_rot),
