@@ -22,6 +22,7 @@ Weapon :: struct {
 	aim_dir:                f32,
 	rot_offs:               f32,
 	rot_offs_axis_positive: bool,
+	attack_break:           int,
 	charge_time:            int,
 }
 
@@ -64,52 +65,62 @@ run_weapon_tick :: proc(
 	mouse_dir_vec := zf4.calc_normal_or_zero(mouse_cam_pos - world.player.pos)
 	weapon.aim_dir = zf4.calc_dir(mouse_dir_vec)
 
-	switch weapon.type {
-	case Weapon_Type.Sword:
-		if attack_input_down {
-			if weapon.charge_time < SWORD_CHARGE_TIME {
-				weapon.charge_time += 1
+	if weapon.attack_break > 0 {
+		weapon.attack_break -= 1
+	} else {
+		switch weapon.type {
+		case Weapon_Type.Sword:
+			if attack_input_down {
+				if weapon.charge_time < SWORD_CHARGE_TIME {
+					weapon.charge_time += 1
+				}
+			} else if attack_input_released {
+				dmg_info := Damage_Info {
+					dmg = SWORD_DMG,
+					kb  = mouse_dir_vec * SWORD_KNOCKBACK,
+				}
+
+				charge_scalar := f32(weapon.charge_time) / SWORD_CHARGE_TIME
+
+				dmg_info.dmg += int(SWORD_CHARGE_DMG_INCREASE * charge_scalar)
+				dmg_info.kb *= ((f32(SWORD_CHARGE_KNOCKBACK_SCALE) - 1.0) * charge_scalar) + 1.0
+
+				if !spawn_hitmask_quad(
+					world.player.pos + (mouse_dir_vec * SWORD_HITBOX_OFFS_DIST),
+					{SWORD_HITBOX_SIZE, SWORD_HITBOX_SIZE},
+					dmg_info,
+					{Damage_Flag.Damage_Enemy},
+					world,
+				) {
+					return false
+				}
+
+				weapon.charge_time = 0
+				weapon.rot_offs_axis_positive = !weapon.rot_offs_axis_positive
 			}
-		} else if attack_input_released {
-			dmg_info := Damage_Info {
-				dmg = SWORD_DMG,
-				kb  = mouse_dir_vec * SWORD_KNOCKBACK,
+
+		case Weapon_Type.Bow:
+			if attack_input_pressed {
+				spawn_projectile(
+					world.player.pos,
+					12.0,
+					weapon.aim_dir,
+					1,
+					{Damage_Flag.Damage_Enemy},
+					world,
+				)
 			}
-
-			charge_scalar := f32(weapon.charge_time) / SWORD_CHARGE_TIME
-
-			dmg_info.dmg += int(SWORD_CHARGE_DMG_INCREASE * charge_scalar)
-			dmg_info.kb *= ((f32(SWORD_CHARGE_KNOCKBACK_SCALE) - 1.0) * charge_scalar) + 1.0
-
-			if !spawn_hitmask_quad(
-				world.player.pos + (mouse_dir_vec * SWORD_HITBOX_OFFS_DIST),
-				{SWORD_HITBOX_SIZE, SWORD_HITBOX_SIZE},
-				dmg_info,
-				{Damage_Flag.Damage_Enemy},
-				world,
-			) {
-				return false
-			}
-
-			weapon.charge_time = 0
-			weapon.rot_offs_axis_positive = !weapon.rot_offs_axis_positive
-		}
-
-	case Weapon_Type.Bow:
-		if attack_input_pressed {
-			spawn_projectile(
-				world.player.pos,
-				12.0,
-				weapon.aim_dir,
-				1,
-				{Damage_Flag.Damage_Enemy},
-				world,
-			)
 		}
 	}
 
-	//rot_offs_dest := weapon.rot_offs_axis_positive ? SWORD_ROT_OFFS : -PLAYER_SWORD_ROT_OFFS
-	//weapon.rot_offs += (rot_offs_dest - weapon.rot_offs) * PLAYER_SWORD_ROT_OFFS_LERP
+	rot_offs_dest: f32 = 0.0
+
+	if weapon.type == Weapon_Type.Sword {
+		// TEMP
+		rot_offs_dest = weapon.rot_offs_axis_positive ? SWORD_ROT_OFFS : -SWORD_ROT_OFFS
+	}
+
+	weapon.rot_offs += (rot_offs_dest - weapon.rot_offs) * SWORD_ROT_OFFS_LERP
 
 	return true
 }

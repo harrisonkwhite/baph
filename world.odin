@@ -1,5 +1,23 @@
 package apocalypse
 
+/*
+
+Is this game about the apocalypse, or about the madness of god? Or somehow both?
+
+Inventory system?
+- I think some form of this would be really good for the survival gameplay.
+	- Something like the original Fallout. You are gathering scraps from the world.
+
+Unique features of this game to test:
+- Sacrifice mechanics
+	- What is sacrificed? How?
+	- Maybe sacrifice health at an altar in exchange for a weapon, like in Risk of Rain?
+	- What if there is some fire at the heart of the world which you need to uphold?
+- Judgement mechanics
+	- Is there some Sans-like entity who judges your behaviour?
+
+*/
+
 import "core:fmt"
 import "core:math"
 import "core:math/rand"
@@ -8,13 +26,6 @@ import "core:slice"
 import "zf4"
 
 MINIONS_ACTIVE :: false
-
-PLAYER_MOVE_SPD :: 3.0
-PLAYER_VEL_LERP_FACTOR :: 0.2
-PLAYER_HP_LIMIT :: 100
-PLAYER_INV_TIME_LIMIT :: 30
-PLAYER_DMG_FLASH_TIME :: 5
-PLAYER_COMBAT_RADIUS :: 256.0
 
 MINION_CNT :: 5
 MINION_ORBIT_DIST :: 80.0
@@ -43,6 +54,7 @@ World :: struct {
 	proj_cnt:           int,
 	hitmasks:           [HITMASK_LIMIT]Hitmask,
 	hitmask_active_cnt: int,
+	building_envs:      []Building_Environmental,
 	dmg_texts:          [DAMAGE_TEXT_LIMIT]Damage_Text,
 	cam:                Camera,
 }
@@ -110,6 +122,18 @@ init_world :: proc(world: ^World) -> bool {
 
 	spawn_player({}, world)
 
+	building_infos := gen_building_infos(4, 4, context.temp_allocator)
+
+	if building_infos == nil {
+		return false
+	}
+
+	world.building_envs = gen_buildings(building_infos) // NOTE: Memory leak here. Just temporary.
+
+	if world.building_envs == nil {
+		return false
+	}
+
 	return true
 }
 
@@ -155,6 +179,8 @@ world_tick :: proc(
 			return World_Tick_Result.Error
 		}
 	}
+
+	door_interaction(world, zf4_data) // TEMP
 
 	//
 	// Assigning Minions to Enemies
@@ -503,6 +529,10 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 	}
 
 	if !append_projectile_world_render_tasks(&render_tasks, world.projectiles[:world.proj_cnt]) {
+		return false
+	}
+
+	if !append_building_env_render_tasks(&render_tasks, world.building_envs) {
 		return false
 	}
 

@@ -3,6 +3,13 @@ package apocalypse
 import "core:math"
 import "zf4"
 
+PLAYER_MOVE_SPD :: 3.0
+PLAYER_VEL_LERP_FACTOR :: 0.2
+PLAYER_HP_LIMIT :: 100
+PLAYER_INV_TIME_LIMIT :: 30
+PLAYER_DMG_FLASH_TIME :: 5
+PLAYER_COMBAT_RADIUS :: 256.0
+
 Player :: struct {
 	active:     bool,
 	pos:        zf4.Vec_2D,
@@ -62,6 +69,39 @@ run_player_tick :: proc(
 		player.flash_time -= 1
 	}
 
+	//
+	// Handling Enemy Contacts
+	//
+	dmg_collider := gen_player_damage_collider(player.pos)
+	enemy_type_infos := ENEMY_TYPE_INFOS
+
+	for i in 0 ..< ENEMY_LIMIT {
+		if !world.enemies.activity[i] {
+			continue
+		}
+
+		enemy := &world.enemies.buf[i]
+		enemy_type_info := enemy_type_infos[enemy.type]
+
+		if Enemy_Type_Flag.Deals_Contact_Damage not_in enemy_type_info.flags {
+			continue
+		}
+
+		enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
+
+		if zf4.do_rects_inters(dmg_collider, enemy_dmg_collider) {
+			kb_dir := zf4.calc_normal_or_zero(player.pos - enemy.pos)
+
+			dmg_info := Damage_Info {
+				dmg = enemy_type_info.contact_dmg,
+				kb  = kb_dir * enemy_type_info.contact_kb,
+			}
+
+			damage_player(world, dmg_info)
+
+			break
+		}
+	}
 
 	// TEMP:
 	if zf4.is_key_pressed(zf4.Key_Code.Tab, zf4_data.input_state, zf4_data.input_state_last) {
@@ -69,7 +109,6 @@ run_player_tick :: proc(
 			type = Weapon_Type.Bow,
 		}
 	}
-
 
 	if !run_weapon_tick(world, game_config, zf4_data) {
 		return false
