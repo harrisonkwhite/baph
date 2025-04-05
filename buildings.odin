@@ -172,7 +172,7 @@ update_buildings :: proc(world: ^World) {
 			building.ceiling_hidden = is_something_in_building(&building, world)
 
 			// Update ceiling alpha.
-			ALPHA_LERP_FACTOR: f32 : 0.2
+			ALPHA_LERP_FACTOR: f32 : 0.1
 
 			dest_alpha: f32 = building.ceiling_hidden ? 0.0 : 1.0
 			building.ceiling_alpha += (dest_alpha - building.ceiling_alpha) * ALPHA_LERP_FACTOR
@@ -180,19 +180,23 @@ update_buildings :: proc(world: ^World) {
 	}
 }
 
-is_something_in_building :: proc(building: ^Building, world: ^World) -> bool {
-	inside_collider := zf4.Rect {
+gen_building_interior_collider :: proc(building: ^Building) -> zf4.Rect {
+	return {
 		f32(building.rect.x * BUILDING_TILE_SIZE),
 		f32(building.rect.y * BUILDING_TILE_SIZE),
 		f32(building.rect.width * BUILDING_TILE_SIZE),
 		f32(building.rect.height * BUILDING_TILE_SIZE),
 	}
+}
+
+is_something_in_building :: proc(building: ^Building, world: ^World) -> bool {
+	interior_collider := gen_building_interior_collider(building)
 
 	// Test for player collision.
 	if world.player.active {
 		player_movement_collider := gen_player_movement_collider(world.player.pos)
 
-		if zf4.do_rects_inters(inside_collider, player_movement_collider) {
+		if zf4.do_rects_inters(interior_collider, player_movement_collider) {
 			return true
 		}
 	}
@@ -207,7 +211,7 @@ is_something_in_building :: proc(building: ^Building, world: ^World) -> bool {
 
 		enemy_movement_collider := gen_enemy_movement_collider(enemy.type, enemy.pos)
 
-		if zf4.do_rects_inters(inside_collider, enemy_movement_collider) {
+		if zf4.do_rects_inters(interior_collider, enemy_movement_collider) {
 			return true
 		}
 	}

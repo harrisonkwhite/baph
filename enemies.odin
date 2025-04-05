@@ -309,7 +309,7 @@ spawn_enemy :: proc(
 	type_infos := ENEMY_TYPE_INFOS
 
 	// NOTE: Remove the below? Or embed into an assertion?
-	if !is_valid_enemy_spawn_pos(pos, type, solid_colliders) {
+	if !is_valid_enemy_spawn_pos(pos, type, world, solid_colliders) {
 		fmt.eprintln("Failed to spawn enemy; the provided position is invalid.")
 		return false
 	}
@@ -334,13 +334,57 @@ spawn_enemy :: proc(
 	return false
 }
 
+proc_enemy_spawning :: proc(world: ^World, solid_colliders: []zf4.Rect) {
+	if world.enemy_spawn_time < ENEMY_SPAWN_INTERVAL {
+		world.enemy_spawn_time += 1
+	} else {
+		SPAWN_TRIAL_LIMIT :: 1000
+
+		spawned := false
+
+		for t in 0 ..< SPAWN_TRIAL_LIMIT {
+			spawn_offs_dir := rand.float32_range(0.0, math.PI * 2.0)
+			spawn_offs_dist := rand.float32_range(
+				ENEMY_SPAWN_DIST_RANGE[0],
+				ENEMY_SPAWN_DIST_RANGE[1],
+			)
+			spawn_pos := world.cam.pos_no_offs + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
+
+			enemy_type := rand.float32() < 0.7 ? Enemy_Type.Melee : Enemy_Type.Ranger
+
+			if !is_valid_enemy_spawn_pos(spawn_pos, enemy_type, world, solid_colliders) {
+				continue
+			}
+
+			spawned = spawn_enemy(enemy_type, spawn_pos, world, solid_colliders)
+
+			break
+		}
+
+		if !spawned {
+			fmt.eprintfln("Failed to spawn enemy after %d trials.", SPAWN_TRIAL_LIMIT)
+		}
+
+		world.enemy_spawn_time = 0
+	}
+}
+
 // TODO: Figure out how to properly do this solid collider system. Frame arena, maybe?
 is_valid_enemy_spawn_pos :: proc(
 	pos: zf4.Vec_2D,
 	type: Enemy_Type,
+	world: ^World,
 	solid_colliders: []zf4.Rect,
 ) -> bool {
 	movement_collider := gen_enemy_movement_collider(type, pos)
+
+	for &building in world.buildings {
+		interior_collider := gen_building_interior_collider(&building)
+
+		if zf4.do_rects_inters(movement_collider, interior_collider) {
+			return false
+		}
+	}
 
 	for sc in solid_colliders {
 		if zf4.do_rects_inters(movement_collider, sc) {

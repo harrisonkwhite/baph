@@ -184,23 +184,20 @@ append_player_render_tasks :: proc(
 	}
 
 	sprite_src_rects := SPRITE_SRC_RECTS
+	sort_depth := player.pos.y + (f32(sprite_src_rects[Sprite.Player].height) / 2.0)
 
-	task := World_Layered_Render_Task {
-		pos        = player.pos,
-		origin     = {0.5, 0.5},
-		scale      = {1.0, 1.0},
-		rot        = 0.0,
-		alpha      = character_alpha,
-		sprite     = Sprite.Player,
+	if !append_world_render_task(
+		tasks,
+		player.pos,
+		Sprite.Player,
+		sort_depth,
+		alpha = character_alpha,
 		flash_time = player.flash_time,
-		sort_depth = player.pos.y + (f32(sprite_src_rects[Sprite.Player].height) / 2.0),
-	}
-
-	if n, err := append(tasks, task); err != nil {
+	) {
 		return false
 	}
 
-	if !append_weapon_render_task(tasks, &player.weapon, player.pos, task.sort_depth + 1.0) {
+	if !append_weapon_render_task(tasks, &player.weapon, player.pos, sort_depth + 1.0) {
 		return false
 	}
 

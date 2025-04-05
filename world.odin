@@ -9,16 +9,6 @@ import "zf4"
 
 WORLD_MEM_ARENA_SIZE :: 1 * mem.Megabyte
 
-MINIONS_ACTIVE :: false
-
-MINION_CNT :: 5
-MINION_ORBIT_DIST :: 80.0
-MINION_ATTACK_DMG :: 6
-MINION_ATTACK_KNOCKBACK :: 4.0
-MINION_ATTACK_INTERVAL :: 60
-MINION_ATTACK_HITBOX_SIZE :: 32.0
-MINION_ATTACK_HITBOX_OFFS_DIST :: 40.0
-
 PROJECTILE_LIMIT :: 512
 
 HITMASK_LIMIT :: 64
@@ -61,13 +51,6 @@ World_Tick_Result :: enum {
 	Normal,
 	Go_To_Title,
 	Error,
-}
-
-Minion :: struct {
-	pos:         zf4.Vec_2D,
-	vel:         zf4.Vec_2D,
-	targ:        Enemy_ID,
-	attack_time: int,
 }
 
 Projectile :: struct {
@@ -175,38 +158,7 @@ world_tick :: proc(
 	//
 	// Enemy Spawning
 	//
-	if world.enemy_spawn_time < ENEMY_SPAWN_INTERVAL {
-		world.enemy_spawn_time += 1
-	} else {
-		SPAWN_TRIAL_LIMIT :: 1000
-
-		spawned := false
-
-		for t in 0 ..< SPAWN_TRIAL_LIMIT {
-			spawn_offs_dir := rand.float32_range(0.0, math.PI * 2.0)
-			spawn_offs_dist := rand.float32_range(
-				ENEMY_SPAWN_DIST_RANGE[0],
-				ENEMY_SPAWN_DIST_RANGE[1],
-			)
-			spawn_pos := world.cam.pos_no_offs + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
-
-			enemy_type := rand.float32() < 0.7 ? Enemy_Type.Melee : Enemy_Type.Ranger
-
-			if !is_valid_enemy_spawn_pos(spawn_pos, enemy_type, solid_colliders) {
-				continue
-			}
-
-			spawned = spawn_enemy(enemy_type, spawn_pos, world, solid_colliders)
-
-			break
-		}
-
-		if !spawned {
-			fmt.eprintfln("Failed to spawn enemy after %d trials.", SPAWN_TRIAL_LIMIT)
-		}
-
-		world.enemy_spawn_time = 0
-	}
+	proc_enemy_spawning(world, solid_colliders)
 
 	//
 	// Player
@@ -217,104 +169,9 @@ world_tick :: proc(
 		}
 	}
 
+	update_minions(world, solid_colliders) // TEMP
+
 	update_buildings(world)
-
-	//
-	// Assigning Minions to Enemies
-	//
-	when MINIONS_ACTIVE {
-		// For every untargeted enemy within the combat radius, assign the nearest minion with no current target to it.
-		for i in 0 ..< ENEMY_LIMIT {
-			if !world.enemies.activity[i] {
-				continue
-			}
-
-			enemy := &world.enemies.buf[i]
-			enemy_id := gen_enemy_id(i, &world.enemies)
-
-			player_dist := zf4.calc_dist(enemy.pos, world.player.pos)
-
-			if player_dist <= PLAYER_COMBAT_RADIUS {
-				enemy_already_targeted := false
-
-				for &minion in world.minions {
-					if minion.targ == enemy_id {
-						enemy_already_targeted = true
-					}
-				}
-
-				if enemy_already_targeted {
-					continue
-				}
-
-				nearest_minion: ^Minion = nil
-				nearest_minion_dist: f32
-
-				for &minion in world.minions {
-					if does_enemy_exist(minion.targ, &world.enemies) {
-						continue
-					}
-
-					enemy_to_minion_dist := zf4.calc_dist(enemy.pos, minion.pos)
-
-					if nearest_minion == nil || enemy_to_minion_dist < nearest_minion_dist {
-						nearest_minion = &minion
-						nearest_minion_dist = enemy_to_minion_dist
-					}
-				}
-
-				if nearest_minion != nil {
-					nearest_minion.targ = gen_enemy_id(i, &world.enemies)
-				}
-			}
-		}
-
-		//
-		// Minion AI
-		//
-		for &minion, i in world.minions {
-			player_orbit_dir := (f32(i) / MINION_CNT) * math.TAU
-
-			targ := get_enemy(minion.targ, &world.enemies)
-
-			dest: zf4.Vec_2D
-
-			if targ == nil {
-				dest = world.player.pos + zf4.calc_len_dir(MINION_ORBIT_DIST, player_orbit_dir)
-			} else {
-				targ_to_player_dir := zf4.calc_normal_or_zero(world.player.pos - targ.pos)
-				dest = targ.pos + (targ_to_player_dir * 40.0)
-			}
-
-			dest_dist := zf4.calc_dist(minion.pos, dest)
-			dest_dir := zf4.calc_normal_or_zero(dest - minion.pos)
-			vel_targ := dest_dist > 8.0 ? dest_dir * 2.5 : {}
-			minion.vel += (vel_targ - minion.vel) * 0.2
-			minion.pos += minion.vel
-
-			if targ != nil {
-				if minion.attack_time < MINION_ATTACK_INTERVAL {
-					minion.attack_time += 1
-				} else {
-					attack_dir := zf4.calc_normal_or_zero(targ.pos - minion.pos)
-
-					if !spawn_hitmask_quad(
-						minion.pos + (attack_dir * MINION_ATTACK_HITBOX_OFFS_DIST),
-						{MINION_ATTACK_HITBOX_SIZE, MINION_ATTACK_HITBOX_SIZE},
-						{dmg = MINION_ATTACK_DMG, kb = attack_dir * MINION_ATTACK_KNOCKBACK},
-						{Damage_Flag.Damage_Enemy},
-						world,
-					) {
-						return World_Tick_Result.Error
-					}
-
-					minion.attack_time = 0
-				}
-			} else {
-				minion.attack_time = 0
-			}
-		}
-	}
 
 	//
 	// Enemy AI
@@ -565,10 +422,8 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		}
 	}
 
-	when MINIONS_ACTIVE {
-		if !append_minion_world_render_tasks(&render_tasks, world.minions[:]) {
-			return false
-		}
+	if !append_minion_world_render_tasks(&render_tasks, world.minions[:]) {
+		return false
 	}
 
 	if !append_enemy_world_render_tasks(&render_tasks, &world.enemies) {
@@ -819,35 +674,6 @@ gen_collider_from_sprite :: proc(
 		f32(src_rects[sprite].width),
 		f32(src_rects[sprite].height),
 	}
-}
-
-append_minion_world_render_tasks :: proc(
-	tasks: ^[dynamic]World_Layered_Render_Task,
-	minions: []Minion,
-) -> bool {
-	sprite_src_rects := SPRITE_SRC_RECTS
-
-	for &minion in minions {
-		sprite := Sprite.Minion
-
-		task := World_Layered_Render_Task {
-			pos        = minion.pos,
-			origin     = {0.5, 0.5},
-			scale      = {1.0, 1.0},
-			rot        = 0.0,
-			alpha      = 1.0,
-			sprite     = sprite,
-			sort_depth = minion.pos.y + (f32(sprite_src_rects[sprite].height) / 2.0),
-		}
-
-		n, err := append(tasks, task)
-
-		if err != nil {
-			return false
-		}
-	}
-
-	return true
 }
 
 spawn_projectile :: proc(
