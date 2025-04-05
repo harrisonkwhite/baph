@@ -59,7 +59,7 @@ World :: struct {
 	proj_cnt:            int,
 	hitmasks:            [HITMASK_LIMIT]Hitmask,
 	hitmask_active_cnt:  int,
-	building:            Building,
+	buildings:           []Building,
 	dmg_texts:           [DAMAGE_TEXT_LIMIT]Damage_Text,
 	cam:                 Camera,
 }
@@ -136,11 +136,32 @@ init_world :: proc(world: ^World) -> bool {
 
 	world.mem_arena_allocator = mem.arena_allocator(&world.mem_arena)
 
-	spawn_player({-64, -64}, world)
+	BUILDING_GRID_SIZE :: zf4.Vec_2D_I{2, 2}
+	BUILDING_GRID_CELL_SIZE_IN_TILES :: zf4.Vec_2D_I{20, 20}
 
-	world.building.rect = {0, 0, 5, 5}
-	world.building.door_x = 2
-	world.building.ceiling_alpha = 1.0
+	world.buildings = gen_buildings_in_grid(
+		BUILDING_GRID_SIZE,
+		BUILDING_GRID_CELL_SIZE_IN_TILES,
+		{8, 5},
+		{12, 9},
+		world.mem_arena_allocator,
+	)
+
+	if world.buildings == nil {
+		return false
+	}
+
+	spawn_player(
+		{
+			f32(BUILDING_GRID_SIZE.x * BUILDING_GRID_CELL_SIZE_IN_TILES.x * BUILDING_TILE_SIZE) *
+			0.5,
+			f32(BUILDING_GRID_SIZE.y * BUILDING_GRID_CELL_SIZE_IN_TILES.y * BUILDING_TILE_SIZE) *
+			0.5,
+		},
+		world,
+	)
+
+	world.cam.pos_no_offs = world.player.pos
 
 	return true
 }
@@ -172,6 +193,7 @@ world_tick :: proc(
 	//
 	// Enemy Spawning
 	//
+	/*
 	if world.enemy_spawn_time < ENEMY_SPAWN_INTERVAL {
 		world.enemy_spawn_time += 1
 	} else {
@@ -186,7 +208,7 @@ world_tick :: proc(
 		}
 
 		world.enemy_spawn_time = 0
-	}
+	}*/
 
 	//
 	// Player
@@ -197,7 +219,7 @@ world_tick :: proc(
 		}
 	}
 
-	update_building(world)
+	update_buildings(world)
 
 	//
 	// Assigning Minions to Enemies
@@ -370,32 +392,42 @@ world_tick :: proc(
 
 		collided := false
 
-		if Damage_Flag.Damage_Player in proj.dmg_flags {
-			// Handle player collision.
-			if world.player.active {
-				player_dmg_collider := gen_player_damage_collider(world.player.pos)
-
-				if zf4.does_poly_inters_with_rect(proj_collider, player_dmg_collider) {
-					damage_player(world, dmg_info)
-					collided = true
-				}
+		// Handle solid collisions.
+		for solid_collider in solid_colliders {
+			if zf4.does_poly_inters_with_rect(proj_collider, solid_collider) {
+				collided = true
+				break
 			}
 		}
 
-		if Damage_Flag.Damage_Enemy in proj.dmg_flags {
-			// Handle enemy collisions.
-			for j in 0 ..< ENEMY_LIMIT {
-				if !world.enemies.activity[j] {
-					continue
+		if !collided {
+			// Handle player collision.
+			if Damage_Flag.Damage_Player in proj.dmg_flags {
+				if world.player.active {
+					player_dmg_collider := gen_player_damage_collider(world.player.pos)
+
+					if zf4.does_poly_inters_with_rect(proj_collider, player_dmg_collider) {
+						damage_player(world, dmg_info)
+						collided = true
+					}
 				}
+			}
 
-				enemy := &world.enemies.buf[j]
-				enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
+			// Handle enemy collisions.
+			if Damage_Flag.Damage_Enemy in proj.dmg_flags {
+				for j in 0 ..< ENEMY_LIMIT {
+					if !world.enemies.activity[j] {
+						continue
+					}
 
-				if zf4.does_poly_inters_with_rect(proj_collider, enemy_dmg_collider) {
-					damage_enemy(j, world, dmg_info)
-					collided = true
-					break
+					enemy := &world.enemies.buf[j]
+					enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
+
+					if zf4.does_poly_inters_with_rect(proj_collider, enemy_dmg_collider) {
+						damage_enemy(j, world, dmg_info)
+						collided = true
+						break
+					}
 				}
 			}
 		}
@@ -549,8 +581,10 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		return false
 	}
 
-	if !append_building_render_tasks(&render_tasks, &world.building) {
-		return false
+	for &building in world.buildings {
+		if !append_building_render_tasks(&render_tasks, &building) {
+			return false
+		}
 	}
 
 	// IDEA: Add optional rendering of colliders, for debugging purposes.
@@ -697,8 +731,10 @@ gen_world_solid_colliders :: proc(
 	colliders: [dynamic]zf4.Rect
 	colliders.allocator = allocator
 
-	if !append_building_solid_colliders(&colliders, &world.building) {
-		return colliders[:], false
+	for &building in world.buildings {
+		if !append_building_solid_colliders(&colliders, &building) {
+			return colliders[:], false
+		}
 	}
 
 	return colliders[:], true

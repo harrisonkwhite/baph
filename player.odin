@@ -76,34 +76,36 @@ run_player_tick :: proc(
 	//
 	// Handling Enemy Contacts
 	//
-	dmg_collider := gen_player_damage_collider(player.pos)
-	enemy_type_infos := ENEMY_TYPE_INFOS
+	{
+		dmg_collider := gen_player_damage_collider(player.pos)
+		enemy_type_infos := ENEMY_TYPE_INFOS
 
-	for i in 0 ..< ENEMY_LIMIT {
-		if !world.enemies.activity[i] {
-			continue
-		}
-
-		enemy := &world.enemies.buf[i]
-		enemy_type_info := enemy_type_infos[enemy.type]
-
-		if Enemy_Type_Flag.Deals_Contact_Damage not_in enemy_type_info.flags {
-			continue
-		}
-
-		enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
-
-		if zf4.do_rects_inters(dmg_collider, enemy_dmg_collider) {
-			kb_dir := zf4.calc_normal_or_zero(player.pos - enemy.pos)
-
-			dmg_info := Damage_Info {
-				dmg = enemy_type_info.contact_dmg,
-				kb  = kb_dir * enemy_type_info.contact_kb,
+		for i in 0 ..< ENEMY_LIMIT {
+			if !world.enemies.activity[i] {
+				continue
 			}
 
-			damage_player(world, dmg_info)
+			enemy := &world.enemies.buf[i]
+			enemy_type_info := enemy_type_infos[enemy.type]
 
-			break
+			if Enemy_Type_Flag.Deals_Contact_Damage not_in enemy_type_info.flags {
+				continue
+			}
+
+			enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
+
+			if zf4.do_rects_inters(dmg_collider, enemy_dmg_collider) {
+				kb_dir := zf4.calc_normal_or_zero(player.pos - enemy.pos)
+
+				dmg_info := Damage_Info {
+					dmg = enemy_type_info.contact_dmg,
+					kb  = kb_dir * enemy_type_info.contact_kb,
+				}
+
+				damage_player(world, dmg_info)
+
+				break
+			}
 		}
 	}
 
@@ -122,11 +124,23 @@ run_player_tick :: proc(
 	// Door Interaction
 	//
 	if zf4.is_key_pressed(zf4.Key_Code.E, zf4_data.input_state, zf4_data.input_state_last) {
+		player_movement_collider := gen_player_movement_collider(world.player.pos)
 		player_dmg_collider := gen_player_damage_collider(world.player.pos)
-		door_collider := gen_door_interaction_collider(&world.building)
 
-		if zf4.do_rects_inters(player_dmg_collider, door_collider) {
-			world.building.door_open = !world.building.door_open
+		for &building in world.buildings {
+			if building.door_open {
+				door_solid_collider := gen_door_solid_collider(&building)
+
+				if zf4.do_rects_inters(player_movement_collider, door_solid_collider) {
+					continue
+				}
+			}
+
+			door_interaction_collider := gen_door_interaction_collider(&building)
+
+			if zf4.do_rects_inters(player_dmg_collider, door_interaction_collider) {
+				building.door_open = !building.door_open
+			}
 		}
 	}
 
