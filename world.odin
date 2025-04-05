@@ -25,6 +25,8 @@ import "core:mem"
 import "core:slice"
 import "zf4"
 
+WORLD_MEM_ARENA_SIZE :: 1 * mem.Megabyte
+
 MINIONS_ACTIVE :: false
 
 MINION_CNT :: 5
@@ -46,17 +48,20 @@ DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE :: 0.2
 DAMAGE_TEXT_FADE_MULT :: 0.8
 
 World :: struct {
-	player:             Player,
-	minions:            [MINION_CNT]Minion,
-	enemies:            Enemies,
-	enemy_spawn_time:   int,
-	projectiles:        [PROJECTILE_LIMIT]Projectile,
-	proj_cnt:           int,
-	hitmasks:           [HITMASK_LIMIT]Hitmask,
-	hitmask_active_cnt: int,
-	building_envs:      []Building_Environmental,
-	dmg_texts:          [DAMAGE_TEXT_LIMIT]Damage_Text,
-	cam:                Camera,
+	mem_arena:           mem.Arena,
+	mem_arena_buf:       []byte,
+	mem_arena_allocator: mem.Allocator,
+	player:              Player,
+	minions:             [MINION_CNT]Minion,
+	enemies:             Enemies,
+	enemy_spawn_time:    int,
+	projectiles:         [PROJECTILE_LIMIT]Projectile,
+	proj_cnt:            int,
+	hitmasks:            [HITMASK_LIMIT]Hitmask,
+	hitmask_active_cnt:  int,
+	building:            Building,
+	dmg_texts:           [DAMAGE_TEXT_LIMIT]Damage_Text,
+	cam:                 Camera,
 }
 
 World_Layered_Render_Task :: struct {
@@ -120,19 +125,21 @@ init_world :: proc(world: ^World) -> bool {
 	assert(world != nil)
 	mem.zero_item(world)
 
-	spawn_player({}, world)
+	world.mem_arena_buf = make([]byte, WORLD_MEM_ARENA_SIZE)
 
-	building_infos := gen_building_infos(4, 4, context.temp_allocator)
-
-	if building_infos == nil {
+	if (world.mem_arena_buf == nil) {
+		fmt.eprintln("Failed to allocate memory for the world memory arena!")
 		return false
 	}
 
-	world.building_envs = gen_buildings(building_infos) // NOTE: Memory leak here. Just temporary.
+	mem.arena_init(&world.mem_arena, world.mem_arena_buf)
 
-	if world.building_envs == nil {
-		return false
-	}
+	world.mem_arena_allocator = mem.arena_allocator(&world.mem_arena)
+
+	spawn_player({-64, -64}, world)
+
+	world.building.rect = {0, 0, 5, 5}
+	world.building.door_x = 2
 
 	return true
 }
@@ -151,6 +158,15 @@ world_tick :: proc(
 	)
 
 	world.hitmask_active_cnt = 0
+
+	solid_colliders, solid_colliders_generated := gen_world_solid_colliders(
+		world,
+		context.temp_allocator,
+	)
+
+	if !solid_colliders_generated {
+		return World_Tick_Result.Error
+	}
 
 	//
 	// Enemy Spawning
@@ -175,12 +191,10 @@ world_tick :: proc(
 	// Player
 	//
 	if world.player.active {
-		if !run_player_tick(world, game_config, zf4_data) {
+		if !run_player_tick(world, solid_colliders, game_config, zf4_data) {
 			return World_Tick_Result.Error
 		}
 	}
-
-	door_interaction(world, zf4_data) // TEMP
 
 	//
 	// Assigning Minions to Enemies
@@ -532,9 +546,11 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		return false
 	}
 
-	if !append_building_env_render_tasks(&render_tasks, world.building_envs) {
+	if !append_building_render_tasks(&render_tasks, &world.building) {
 		return false
 	}
+
+	// IDEA: Add optional rendering of colliders, for debugging purposes.
 
 	slice.sort_by(
 		render_tasks[:],
@@ -665,6 +681,92 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 
 clean_world :: proc(world: ^World) {
 	assert(world != nil)
+	delete(world.mem_arena_buf)
+}
+
+gen_world_solid_colliders :: proc(
+	world: ^World,
+	allocator := context.allocator,
+) -> (
+	[]zf4.Rect,
+	bool,
+) {
+	colliders: [dynamic]zf4.Rect
+	colliders.allocator = allocator
+
+	if !append_building_solid_colliders(&colliders, &world.building) {
+		return colliders[:], false
+	}
+
+	return colliders[:], true
+}
+
+append_world_render_task :: proc(
+	tasks: ^[dynamic]World_Layered_Render_Task,
+	pos: zf4.Vec_2D,
+	sprite: Sprite,
+	sort_depth: f32,
+	origin := zf4.Vec_2D{0.5, 0.5},
+	scale := zf4.Vec_2D{1.0, 1.0},
+	rot: f32 = 0.0,
+	alpha: f32 = 1.0,
+	flash_time := 0,
+) -> bool {
+	assert(alpha >= 0.0 && alpha <= 1.0)
+	assert(flash_time >= 0)
+
+	task := World_Layered_Render_Task {
+		pos        = pos,
+		origin     = origin,
+		scale      = scale,
+		rot        = rot,
+		alpha      = alpha,
+		sprite     = sprite,
+		flash_time = flash_time,
+		sort_depth = sort_depth,
+	}
+
+	if _, err := append(tasks, task); err != nil {
+		return false
+	}
+
+	return true
+}
+
+proc_solid_collisions :: proc(vel: ^zf4.Vec_2D, collider: zf4.Rect, other_colliders: []zf4.Rect) {
+	collider_hor := zf4.Rect{collider.x + vel.x, collider.y, collider.width, collider.height}
+
+	for oc in other_colliders {
+		if zf4.do_rects_inters(collider_hor, oc) {
+			vel.x = 0.0
+			break
+		}
+	}
+
+	collider_ver := zf4.Rect{collider.x, collider.y + vel.y, collider.width, collider.height}
+
+	for oc in other_colliders {
+		if zf4.do_rects_inters(collider_ver, oc) {
+			vel.y = 0.0
+			break
+		}
+	}
+
+	if vel.x != 0.0 && vel.y != 0.0 {
+		collider_diag := zf4.Rect {
+			collider.x + vel.x,
+			collider.y + vel.y,
+			collider.width,
+			collider.height,
+		}
+
+		for oc in other_colliders {
+			if zf4.do_rects_inters(collider_diag, oc) {
+				vel.x = 0.0
+				break
+			}
+		}
+	}
 }
 
 gen_collider_from_sprite :: proc(

@@ -1,5 +1,6 @@
 package apocalypse
 
+import "core:fmt"
 import "core:math"
 import "zf4"
 
@@ -22,6 +23,7 @@ Player :: struct {
 
 run_player_tick :: proc(
 	world: ^World,
+	solid_colliders: []zf4.Rect,
 	game_config: ^Game_Config,
 	zf4_data: ^zf4.Game_Tick_Func_Data,
 ) -> bool {
@@ -58,6 +60,8 @@ run_player_tick :: proc(
 
 	vel_lerp_targ := move_dir * PLAYER_MOVE_SPD * calc_weapon_move_spd_mult(&player.weapon)
 	player.vel = math.lerp(player.vel, vel_lerp_targ, f32(PLAYER_VEL_LERP_FACTOR))
+
+	proc_solid_collisions(&player.vel, gen_player_movement_collider(player.pos), solid_colliders)
 
 	player.pos += player.vel
 
@@ -112,6 +116,18 @@ run_player_tick :: proc(
 
 	if !run_weapon_tick(world, game_config, zf4_data) {
 		return false
+	}
+
+	//
+	// Door Interaction
+	//
+	if zf4.is_key_pressed(zf4.Key_Code.E, zf4_data.input_state, zf4_data.input_state_last) {
+		player_dmg_collider := gen_player_damage_collider(world.player.pos)
+		door_collider := gen_door_interaction_collider(&world.building)
+
+		if zf4.do_rects_inters(player_dmg_collider, door_collider) {
+			world.building.door_open = !world.building.door_open
+		}
 	}
 
 	return true
@@ -180,6 +196,15 @@ damage_player :: proc(world: ^World, dmg_info: Damage_Info) {
 	spawn_damage_text(world, dmg_info.dmg, world.player.pos)
 
 	apply_camera_shake(&world.cam, 2.0)
+}
+
+gen_player_movement_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {
+	spr_collider := gen_collider_from_sprite(Sprite.Player, player_pos)
+
+	mv_collider := spr_collider
+	mv_collider.height = spr_collider.height / 4.0
+	mv_collider.y = zf4.calc_rect_bottom(spr_collider) - mv_collider.height
+	return mv_collider
 }
 
 gen_player_damage_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {

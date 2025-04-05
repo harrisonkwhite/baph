@@ -5,210 +5,93 @@ import "zf4"
 
 BUILDING_TILE_SIZE :: 16
 
-Building_Info :: struct {
-	rect:   zf4.Rect_I,
-	door_x: int,
+Building :: struct {
+	rect:      zf4.Rect_I,
+	door_x:    int,
+	door_open: bool,
+	// TODO: Ceiling hidden state?
 }
 
-Building_Environmental :: struct {
-	type: Building_Environmental_Type,
-	pos:  zf4.Vec_2D,
-	open: bool, // Only used for doors.
-}
-
-Building_Environmental_Type :: enum {
-	Wall,
-	Door_Border_Left,
-	Door_Border_Right,
-	Door,
-	Left_Ceiling_Beam,
-	Right_Ceiling_Beam,
-}
-
-gen_building_infos :: proc(
-	cnt_hor: int,
-	cnt_ver: int,
-	allocator := context.allocator,
-) -> []Building_Info {
-	assert(cnt_hor > 0)
-	assert(cnt_ver > 0)
-
-	// NOTE: All very much temporary. Not sure how actual world generation will work yet.
-	infos := make([]Building_Info, cnt_hor * cnt_ver, allocator)
-
-	if infos != nil {
-		for y in 0 ..< cnt_ver {
-			for x in 0 ..< cnt_hor {
-				info := &infos[(y * cnt_hor) + x]
-
-				info.rect.x = x * 20
-				info.rect.y = y * 20
-				info.rect.width = int(rand.float32_range(8.0, 11.0))
-				info.rect.height = int(rand.float32_range(4.0, 6.0))
-				info.door_x = int(rand.float32_range(1.0, f32(info.rect.width) - 2.0))
-			}
-		}
-	}
-
-	return infos
-}
-
-gen_buildings :: proc(
-	infos: []Building_Info,
-	allocator := context.allocator,
-) -> []Building_Environmental {
-	envs := make([]Building_Environmental, calc_building_env_cnt(infos))
-
-	if envs != nil {
-		env_cnter := 0
-
-		for &bi in infos {
-			// Generate back.
-			for xo in 0 ..< bi.rect.width {
-				envs[env_cnter] = {
-					type = Building_Environmental_Type.Wall,
-					pos  = zf4.Vec_2D{f32(bi.rect.x + xo), f32(bi.rect.y)} * BUILDING_TILE_SIZE,
-				}
-				env_cnter += 1
-			}
-
-			// Generate front.
-			for xo in 0 ..< bi.rect.width {
-				envs[env_cnter] = {
-					type = Building_Environmental_Type.Wall,
-					pos  = zf4.Vec_2D {
-						f32(bi.rect.x + xo),
-						f32(bi.rect.y + bi.rect.height),
-					} * BUILDING_TILE_SIZE,
-				}
-
-				if xo == bi.door_x {
-					envs[env_cnter].type = Building_Environmental_Type.Door_Border_Left
-				} else if xo == bi.door_x + 1 {
-					envs[env_cnter].type = Building_Environmental_Type.Door_Border_Right
-				}
-
-				env_cnter += 1
-			}
-
-			envs[env_cnter] = {
-				type = Building_Environmental_Type.Door,
-				pos  = zf4.Vec_2D {
-					f32(bi.rect.x + bi.door_x),
-					f32(bi.rect.y + bi.rect.height),
-				} * BUILDING_TILE_SIZE,
-			}
-
-			env_cnter += 1
-
-			// Generate ceiling beams.
-			for yo in 0 ..< bi.rect.height {
-				left_ceiling_beam := Building_Environmental {
-					type = Building_Environmental_Type.Left_Ceiling_Beam,
-					pos  = zf4.Vec_2D{f32(bi.rect.x), f32(bi.rect.y + yo)} * BUILDING_TILE_SIZE,
-				}
-
-				envs[env_cnter] = left_ceiling_beam
-				env_cnter += 1
-
-				right_ceiling_beam := Building_Environmental {
-					type = Building_Environmental_Type.Right_Ceiling_Beam,
-					pos  = zf4.Vec_2D {
-						f32(bi.rect.x + bi.rect.width - 1),
-						f32(bi.rect.y + yo),
-					} * BUILDING_TILE_SIZE,
-				}
-
-				envs[env_cnter] = right_ceiling_beam
-				env_cnter += 1
-			}
-		}
-
-		assert(env_cnter == len(envs)) // Make sure we haven't overestimated how much space was needed.
-	}
-
-	return envs
-}
-
-calc_building_env_cnt :: proc(infos: []Building_Info) -> int {
-	cnt := 0
-
-	for &info in infos {
-		assert_building_info_validity(&info)
-		cnt += (info.rect.width * 2) + (info.rect.height * 2) + 1
-	}
-
-	return cnt
-}
-
-door_interaction :: proc(world: ^World, zf4_data: ^zf4.Game_Tick_Func_Data) {
-	if !world.player.active {
-		return
-	}
-
-	if zf4.is_key_pressed(zf4.Key_Code.E, zf4_data.input_state, zf4_data.input_state_last) {
-		player_dmg_collider := gen_player_damage_collider(world.player.pos)
-		sprite_src_rects := SPRITE_SRC_RECTS
-
-		for &env in world.building_envs {
-			assert_building_env_validity(&env)
-
-			if env.type != Building_Environmental_Type.Door {
-				continue
-			}
-
-			door_collider := gen_collider_from_sprite(Sprite.Door_Closed, env.pos, {0.0, 1.0})
-
-			if zf4.do_rects_inters(player_dmg_collider, door_collider) {
-				env.open = !env.open
-			}
-		}
-	}
-}
-
-append_building_env_render_tasks :: proc(
-	tasks: ^[dynamic]World_Layered_Render_Task,
-	envs: []Building_Environmental,
+append_building_solid_colliders :: proc(
+	colliders: ^[dynamic]zf4.Rect,
+	building: ^Building,
 ) -> bool {
-	sprite_src_rects := SPRITE_SRC_RECTS
+	COLLIDER_THICKNESS := 4
 
-	for &env in envs {
-		assert_building_env_validity(&env)
+	// Generate back collider.
+	back_collider := zf4.Rect {
+		f32(building.rect.x * BUILDING_TILE_SIZE),
+		f32((building.rect.y * BUILDING_TILE_SIZE) - COLLIDER_THICKNESS),
+		f32(building.rect.width * BUILDING_TILE_SIZE),
+		f32(COLLIDER_THICKNESS),
+	}
 
-		task := World_Layered_Render_Task {
-			pos        = env.pos,
-			scale      = {1.0, 1.0},
-			rot        = 0.0,
-			alpha      = 1.0,
-			sort_depth = env.pos.y,
+	if _, err := append(colliders, back_collider); err != nil {
+		return false
+	}
+
+	// Generate front colliders.
+	{
+		left_front_collider := zf4.Rect {
+			f32(building.rect.x * BUILDING_TILE_SIZE),
+			f32((zf4.calc_rect_i_bottom(building.rect) * BUILDING_TILE_SIZE) - COLLIDER_THICKNESS),
+			f32(building.door_x * BUILDING_TILE_SIZE),
+			f32(COLLIDER_THICKNESS),
 		}
 
-		elevation := 0 // TEMP?
-
-		switch env.type {
-		case .Wall:
-			task.sprite = Sprite.Wall
-			task.origin = {0.0, 1.0}
-		case .Door_Border_Left:
-			task.sprite = Sprite.Door_Border_Left
-			task.origin = {0.0, 1.0}
-		case .Door_Border_Right:
-			task.sprite = Sprite.Door_Border_Right
-			task.origin = {0.0, 1.0}
-		case .Door:
-			task.sprite = env.open ? Sprite.Door_Open : Sprite.Door_Closed
-			task.origin = {0.0, 1.0}
-		case .Left_Ceiling_Beam:
-			task.sprite = Sprite.Left_Ceiling_Beam
-			elevation = sprite_src_rects[Sprite.Wall].height / BUILDING_TILE_SIZE
-		case .Right_Ceiling_Beam:
-			task.sprite = Sprite.Right_Ceiling_Beam
-			elevation = sprite_src_rects[Sprite.Wall].height / BUILDING_TILE_SIZE
+		if _, err := append(colliders, left_front_collider); err != nil {
+			return false
 		}
 
-		task.pos.y -= f32(BUILDING_TILE_SIZE * elevation)
+		right_front_collider := zf4.Rect {
+			f32((building.rect.x + building.door_x + 2) * BUILDING_TILE_SIZE),
+			f32((zf4.calc_rect_i_bottom(building.rect) * BUILDING_TILE_SIZE) - COLLIDER_THICKNESS),
+			f32((building.rect.width - building.door_x - 2) * BUILDING_TILE_SIZE),
+			f32(COLLIDER_THICKNESS),
+		}
 
-		if _, err := append(tasks, task); err != nil {
+		if _, err := append(colliders, right_front_collider); err != nil {
+			return false
+		}
+
+		if !building.door_open {
+			door_collider := zf4.Rect {
+				f32((building.rect.x + building.door_x) * BUILDING_TILE_SIZE),
+				f32(
+					(zf4.calc_rect_i_bottom(building.rect) * BUILDING_TILE_SIZE) -
+					COLLIDER_THICKNESS,
+				),
+				f32(2 * BUILDING_TILE_SIZE),
+				f32(COLLIDER_THICKNESS),
+			}
+
+			if _, err := append(colliders, door_collider); err != nil {
+				return false
+			}
+		}
+	}
+
+	// Generate side colliders.
+	{
+		left_side_collider := zf4.Rect {
+			f32(building.rect.x * BUILDING_TILE_SIZE),
+			f32(building.rect.y * BUILDING_TILE_SIZE),
+			f32(COLLIDER_THICKNESS),
+			f32((building.rect.height * BUILDING_TILE_SIZE) - COLLIDER_THICKNESS),
+		}
+
+		if _, err := append(colliders, left_side_collider); err != nil {
+			return false
+		}
+
+		right_side_collider := zf4.Rect {
+			f32((zf4.calc_rect_i_right(building.rect) * BUILDING_TILE_SIZE) - COLLIDER_THICKNESS),
+			f32(building.rect.y * BUILDING_TILE_SIZE),
+			f32(COLLIDER_THICKNESS),
+			f32((building.rect.height * BUILDING_TILE_SIZE) - COLLIDER_THICKNESS),
+		}
+
+		if _, err := append(colliders, right_side_collider); err != nil {
 			return false
 		}
 	}
@@ -216,12 +99,128 @@ append_building_env_render_tasks :: proc(
 	return true
 }
 
-assert_building_info_validity :: proc(info: ^Building_Info) {
-	assert(info.rect.width > 0 && info.rect.height > 0)
-	assert(info.door_x > 0 && info.door_x < info.rect.width - 2)
+append_render_task :: proc(
+	tasks: ^[dynamic]World_Layered_Render_Task,
+	pos: zf4.Vec_2D,
+	sprite: Sprite,
+	sort_depth: f32,
+	origin := zf4.Vec_2D{0.5, 0.5},
+	scale := zf4.Vec_2D{1.0, 1.0},
+	rot: f32 = 0.0,
+	alpha: f32 = 1.0,
+	flash_time := 0,
+) -> bool {
+	assert(alpha >= 0.0 && alpha <= 1.0)
+	assert(flash_time >= 0)
+
+	task := World_Layered_Render_Task {
+		pos        = pos,
+		origin     = origin,
+		scale      = scale,
+		rot        = rot,
+		alpha      = alpha,
+		sprite     = sprite,
+		flash_time = flash_time,
+		sort_depth = sort_depth,
+	}
+
+	if _, err := append(tasks, task); err != nil {
+		return false
+	}
+
+	return true
 }
 
-assert_building_env_validity :: proc(env: ^Building_Environmental) {
-	assert(env.type == Building_Environmental_Type.Door || !env.open)
+append_building_render_tasks :: proc(
+	tasks: ^[dynamic]World_Layered_Render_Task,
+	building: ^Building,
+) -> bool {
+	//
+	// Back
+	//
+	for xo in 0 ..< building.rect.width {
+		pos := building_tile_to_world_pos({building.rect.x + xo, building.rect.y})
+
+		if !append_render_task(tasks, pos, Sprite.Wall, pos.y, origin = {0.0, 1.0}) {
+			return false
+		}
+	}
+
+	//
+	// Front
+	//
+	for xo in 0 ..< building.rect.width {
+		pos := building_tile_to_world_pos(
+			{building.rect.x + xo, building.rect.y + building.rect.height},
+		)
+
+		sprite := Sprite.Wall
+
+		if xo == building.door_x {
+			sprite = Sprite.Door_Border_Left
+		} else if xo == building.door_x + 1 {
+			sprite = Sprite.Door_Border_Right
+		}
+
+		if !append_render_task(tasks, pos, sprite, pos.y, origin = {0.0, 1.0}) {
+			return false
+		}
+	}
+
+	// Door
+	{
+		pos := building_tile_to_world_pos(
+			{building.rect.x + building.door_x, building.rect.y + building.rect.height},
+		)
+
+		if !append_render_task(
+			tasks,
+			pos,
+			building.door_open ? Sprite.Door_Open : Sprite.Door_Closed,
+			pos.y,
+			origin = {0.0, 1.0},
+		) {
+			return false
+		}
+	}
+
+	//
+	// Sides
+	//
+	for yo in 0 ..< building.rect.height {
+		// Left Ceiling Beam
+		{
+			pos := building_tile_to_world_pos({building.rect.x, building.rect.y + yo})
+
+			if !append_render_task(tasks, pos, Sprite.Left_Ceiling_Beam, pos.y, origin = {}) {
+				return false
+			}
+		}
+
+		// Right Ceiling Beam
+		{
+			pos := building_tile_to_world_pos(
+				{building.rect.x + building.rect.width - 1, building.rect.y + yo},
+			)
+
+			if !append_render_task(tasks, pos, Sprite.Right_Ceiling_Beam, pos.y, origin = {}) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+building_tile_to_world_pos :: proc(pos: zf4.Vec_2D_I) -> zf4.Vec_2D {
+	return {f32(pos.x), f32(pos.y)} * BUILDING_TILE_SIZE
+}
+
+gen_door_interaction_collider :: proc(building: ^Building) -> zf4.Rect {
+	pos := building_tile_to_world_pos(
+		{building.rect.x + building.door_x, building.rect.y + building.rect.height},
+	)
+
+	return gen_collider_from_sprite(Sprite.Door_Closed, pos, {0.0, 1.0})
 }
 
