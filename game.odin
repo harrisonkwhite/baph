@@ -58,6 +58,7 @@ Sprite :: enum {
 	Door_Open,
 	Left_Ceiling_Beam,
 	Right_Ceiling_Beam,
+	Ceiling,
 	Cursor,
 }
 
@@ -76,6 +77,7 @@ SPRITE_SRC_RECTS :: [len(Sprite)]zf4.Rect_I {
 	Sprite.Door_Open          = {104, 88, 32, 48},
 	Sprite.Left_Ceiling_Beam  = {120, 24, 16, 16},
 	Sprite.Right_Ceiling_Beam = {136, 24, 16, 16},
+	Sprite.Ceiling            = {120, 40, 16, 16},
 	Sprite.Cursor             = {0, 8, 8, 8},
 }
 

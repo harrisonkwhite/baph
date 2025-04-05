@@ -140,6 +140,7 @@ init_world :: proc(world: ^World) -> bool {
 
 	world.building.rect = {0, 0, 5, 5}
 	world.building.door_x = 2
+	world.building.ceiling_alpha = 1.0
 
 	return true
 }
@@ -195,6 +196,8 @@ world_tick :: proc(
 			return World_Tick_Result.Error
 		}
 	}
+
+	update_building(world)
 
 	//
 	// Assigning Minions to Enemies

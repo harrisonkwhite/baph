@@ -6,10 +6,11 @@ import "zf4"
 BUILDING_TILE_SIZE :: 16
 
 Building :: struct {
-	rect:      zf4.Rect_I,
-	door_x:    int,
-	door_open: bool,
-	// TODO: Ceiling hidden state?
+	rect:           zf4.Rect_I,
+	door_x:         int,
+	door_open:      bool,
+	ceiling_hidden: bool,
+	ceiling_alpha:  f32,
 }
 
 append_building_solid_colliders :: proc(
@@ -99,49 +100,49 @@ append_building_solid_colliders :: proc(
 	return true
 }
 
-append_render_task :: proc(
-	tasks: ^[dynamic]World_Layered_Render_Task,
-	pos: zf4.Vec_2D,
-	sprite: Sprite,
-	sort_depth: f32,
-	origin := zf4.Vec_2D{0.5, 0.5},
-	scale := zf4.Vec_2D{1.0, 1.0},
-	rot: f32 = 0.0,
-	alpha: f32 = 1.0,
-	flash_time := 0,
-) -> bool {
-	assert(alpha >= 0.0 && alpha <= 1.0)
-	assert(flash_time >= 0)
+update_building :: proc(world: ^World) {
+	building := &world.building
 
-	task := World_Layered_Render_Task {
-		pos        = pos,
-		origin     = origin,
-		scale      = scale,
-		rot        = rot,
-		alpha      = alpha,
-		sprite     = sprite,
-		flash_time = flash_time,
-		sort_depth = sort_depth,
+	// Update ceiling visibility.
+	building.ceiling_hidden = false
+
+	if world.player.active {
+		inside_collider := zf4.Rect {
+			f32(building.rect.x * BUILDING_TILE_SIZE),
+			f32(building.rect.y * BUILDING_TILE_SIZE),
+			f32(building.rect.width * BUILDING_TILE_SIZE),
+			f32(building.rect.height * BUILDING_TILE_SIZE),
+		}
+
+		player_movement_collider := gen_player_movement_collider(world.player.pos)
+
+		if zf4.do_rects_inters(inside_collider, player_movement_collider) {
+			building.ceiling_hidden = true
+		}
 	}
 
-	if _, err := append(tasks, task); err != nil {
-		return false
-	}
+	// Update ceiling alpha.
+	ALPHA_LERP_FACTOR: f32 : 0.2
 
-	return true
+	dest_alpha: f32 = building.ceiling_hidden ? 0.0 : 1.0
+	building.ceiling_alpha += (dest_alpha - building.ceiling_alpha) * ALPHA_LERP_FACTOR
 }
 
 append_building_render_tasks :: proc(
 	tasks: ^[dynamic]World_Layered_Render_Task,
 	building: ^Building,
 ) -> bool {
+	sprite_src_rects := SPRITE_SRC_RECTS
+	assert(sprite_src_rects[Sprite.Wall].height % BUILDING_TILE_SIZE == 0)
+	wall_tile_height := sprite_src_rects[Sprite.Wall].height / BUILDING_TILE_SIZE
+
 	//
 	// Back
 	//
 	for xo in 0 ..< building.rect.width {
 		pos := building_tile_to_world_pos({building.rect.x + xo, building.rect.y})
 
-		if !append_render_task(tasks, pos, Sprite.Wall, pos.y, origin = {0.0, 1.0}) {
+		if !append_world_render_task(tasks, pos, Sprite.Wall, pos.y, origin = {0.0, 1.0}) {
 			return false
 		}
 	}
@@ -162,7 +163,7 @@ append_building_render_tasks :: proc(
 			sprite = Sprite.Door_Border_Right
 		}
 
-		if !append_render_task(tasks, pos, sprite, pos.y, origin = {0.0, 1.0}) {
+		if !append_world_render_task(tasks, pos, sprite, pos.y, origin = {0.0, 1.0}) {
 			return false
 		}
 	}
@@ -173,7 +174,7 @@ append_building_render_tasks :: proc(
 			{building.rect.x + building.door_x, building.rect.y + building.rect.height},
 		)
 
-		if !append_render_task(
+		if !append_world_render_task(
 			tasks,
 			pos,
 			building.door_open ? Sprite.Door_Open : Sprite.Door_Closed,
@@ -190,9 +191,17 @@ append_building_render_tasks :: proc(
 	for yo in 0 ..< building.rect.height {
 		// Left Ceiling Beam
 		{
-			pos := building_tile_to_world_pos({building.rect.x, building.rect.y + yo})
+			pos := building_tile_to_world_pos(
+				{building.rect.x, building.rect.y - wall_tile_height + yo},
+			)
 
-			if !append_render_task(tasks, pos, Sprite.Left_Ceiling_Beam, pos.y, origin = {}) {
+			if !append_world_render_task(
+				tasks,
+				pos,
+				Sprite.Left_Ceiling_Beam,
+				pos.y + f32(BUILDING_TILE_SIZE * (wall_tile_height + 1)),
+				origin = {},
+			) {
 				return false
 			}
 		}
@@ -200,11 +209,44 @@ append_building_render_tasks :: proc(
 		// Right Ceiling Beam
 		{
 			pos := building_tile_to_world_pos(
-				{building.rect.x + building.rect.width - 1, building.rect.y + yo},
+				{
+					building.rect.x + building.rect.width - 1,
+					building.rect.y - wall_tile_height + yo,
+				},
 			)
 
-			if !append_render_task(tasks, pos, Sprite.Right_Ceiling_Beam, pos.y, origin = {}) {
+			if !append_world_render_task(
+				tasks,
+				pos,
+				Sprite.Right_Ceiling_Beam,
+				pos.y + f32(BUILDING_TILE_SIZE * (wall_tile_height + 1)),
+				origin = {},
+			) {
 				return false
+			}
+		}
+	}
+
+	//
+	// Ceiling
+	//
+	if building.ceiling_alpha > 0.0 {
+		for yo in 0 ..< building.rect.height {
+			for xo in 0 ..< building.rect.width {
+				pos := building_tile_to_world_pos(
+					{building.rect.x + xo, building.rect.y - wall_tile_height + yo},
+				)
+
+				if !append_world_render_task(
+					tasks,
+					pos,
+					Sprite.Ceiling,
+					pos.y + f32(BUILDING_TILE_SIZE * (wall_tile_height + 1)) - 1.0,
+					origin = {},
+					alpha = building.ceiling_alpha,
+				) {
+					return false
+				}
 			}
 		}
 	}
