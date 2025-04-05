@@ -72,7 +72,7 @@ Enemy_Type_Info :: struct {
 	contact_kb:  f32,
 }
 
-Enemy_Type_AI_Func :: proc(enemy_index: int, world: ^World) -> bool
+Enemy_Type_AI_Func :: proc(enemy_index: int, world: ^World, solid_colliders: []zf4.Rect) -> bool
 
 Enemies :: struct {
 	buf:      [ENEMY_LIMIT]Enemy,
@@ -105,7 +105,7 @@ does_enemy_exist :: proc(id: Enemy_ID, enemies: ^Enemies) -> bool {
 	return enemies.activity[id.index] && enemies.versions[id.index] == id.version
 }
 
-melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
+melee_enemy_ai :: proc(enemy_index: int, world: ^World, solid_colliders: []zf4.Rect) -> bool {
 	assert(enemy_index >= 0 && enemy_index < ENEMY_LIMIT)
 	assert(world != nil)
 	assert(world.enemies.activity[enemy_index])
@@ -146,6 +146,13 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 	}
 
 	enemy.vel += (vel_targ - enemy.vel) * 0.2
+
+	proc_solid_collisions(
+		&enemy.vel,
+		gen_enemy_movement_collider(enemy.type, enemy.pos),
+		solid_colliders,
+	)
+
 	enemy.pos += enemy.vel
 
 	if enemy.melee.attacking {
@@ -153,6 +160,7 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 			enemy.melee.attack_time += 1
 		} else {
 			attack_dir := zf4.calc_normal_or_zero(world.player.pos - enemy.pos)
+
 			ATTACK_HITBOX_OFFS_DIST :: 32.0
 			ATTACK_HITBOX_SIZE :: 32.0
 			ATTACK_KNOCKBACK :: 6.0
@@ -174,7 +182,7 @@ melee_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 	return true
 }
 
-ranger_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
+ranger_enemy_ai :: proc(enemy_index: int, world: ^World, solid_colliders: []zf4.Rect) -> bool {
 	assert(enemy_index >= 0 && enemy_index < ENEMY_LIMIT)
 	assert(world != nil)
 	assert(world.enemies.activity[enemy_index])
@@ -200,7 +208,7 @@ ranger_enemy_ai :: proc(enemy_index: int, world: ^World) -> bool {
 				{Damage_Flag.Damage_Player},
 				world,
 			) {
-				fmt.print("Failed to spawn projectile!") // NOTE: Should this be integrated into the function?
+				fmt.eprint("Failed to spawn projectile!") // NOTE: Should this be integrated into the function?
 			}
 
 			enemy.ranger.shoot_time = 0
@@ -292,8 +300,19 @@ render_enemy_hp_bars :: proc(
 	}
 }
 
-spawn_enemy :: proc(type: Enemy_Type, pos: zf4.Vec_2D, world: ^World) -> bool {
+spawn_enemy :: proc(
+	type: Enemy_Type,
+	pos: zf4.Vec_2D,
+	world: ^World,
+	solid_colliders: []zf4.Rect,
+) -> bool {
 	type_infos := ENEMY_TYPE_INFOS
+
+	// NOTE: Remove the below? Or embed into an assertion?
+	if !is_valid_enemy_spawn_pos(pos, type, solid_colliders) {
+		fmt.eprintln("Failed to spawn enemy; the provided position is invalid.")
+		return false
+	}
 
 	for i in 0 ..< ENEMY_LIMIT {
 		if !world.enemies.activity[i] {
@@ -310,7 +329,26 @@ spawn_enemy :: proc(type: Enemy_Type, pos: zf4.Vec_2D, world: ^World) -> bool {
 		}
 	}
 
+	fmt.eprintln("Failed to spawn enemy due to insufficient space!")
+
 	return false
+}
+
+// TODO: Figure out how to properly do this solid collider system. Frame arena, maybe?
+is_valid_enemy_spawn_pos :: proc(
+	pos: zf4.Vec_2D,
+	type: Enemy_Type,
+	solid_colliders: []zf4.Rect,
+) -> bool {
+	movement_collider := gen_enemy_movement_collider(type, pos)
+
+	for sc in solid_colliders {
+		if zf4.do_rects_inters(movement_collider, sc) {
+			return false
+		}
+	}
+
+	return true
 }
 
 damage_enemy :: proc(enemy_index: int, world: ^World, dmg_info: Damage_Info) {
@@ -331,8 +369,18 @@ damage_enemy :: proc(enemy_index: int, world: ^World, dmg_info: Damage_Info) {
 	apply_camera_shake(&world.cam, 0.75)
 }
 
-gen_enemy_damage_collider :: proc(type: Enemy_Type, pos: zf4.Vec_2D) -> zf4.Rect {
+gen_enemy_movement_collider :: proc(type: Enemy_Type, enemy_pos: zf4.Vec_2D) -> zf4.Rect {
 	type_infos := ENEMY_TYPE_INFOS
-	return gen_collider_from_sprite(type_infos[type].sprite, pos)
+	spr_collider := gen_collider_from_sprite(type_infos[type].sprite, enemy_pos)
+
+	mv_collider := spr_collider
+	mv_collider.height = spr_collider.height / 4.0
+	mv_collider.y = zf4.calc_rect_bottom(spr_collider) - mv_collider.height
+	return mv_collider
+}
+
+gen_enemy_damage_collider :: proc(type: Enemy_Type, enemy_pos: zf4.Vec_2D) -> zf4.Rect {
+	type_infos := ENEMY_TYPE_INFOS
+	return gen_collider_from_sprite(type_infos[type].sprite, enemy_pos)
 }
 

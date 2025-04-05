@@ -1,23 +1,5 @@
 package apocalypse
 
-/*
-
-Is this game about the apocalypse, or about the madness of god? Or somehow both?
-
-Inventory system?
-- I think some form of this would be really good for the survival gameplay.
-	- Something like the original Fallout. You are gathering scraps from the world.
-
-Unique features of this game to test:
-- Sacrifice mechanics
-	- What is sacrificed? How?
-	- Maybe sacrifice health at an altar in exchange for a weapon, like in Risk of Rain?
-	- What if there is some fire at the heart of the world which you need to uphold?
-- Judgement mechanics
-	- Is there some Sans-like entity who judges your behaviour?
-
-*/
-
 import "core:fmt"
 import "core:math"
 import "core:math/rand"
@@ -193,22 +175,38 @@ world_tick :: proc(
 	//
 	// Enemy Spawning
 	//
-	/*
 	if world.enemy_spawn_time < ENEMY_SPAWN_INTERVAL {
 		world.enemy_spawn_time += 1
 	} else {
-		spawn_offs_dir := rand.float32_range(0.0, math.PI * 2.0)
-		spawn_offs_dist := rand.float32_range(ENEMY_SPAWN_DIST_RANGE[0], ENEMY_SPAWN_DIST_RANGE[1])
-		spawn_pos := world.cam.pos_no_offs + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
+		SPAWN_TRIAL_LIMIT :: 1000
 
-		enemy_type := rand.float32() < 0.7 ? Enemy_Type.Melee : Enemy_Type.Ranger
+		spawned := false
 
-		if !spawn_enemy(enemy_type, spawn_pos, world) {
-			fmt.println("Failed to spawn enemy!")
+		for t in 0 ..< SPAWN_TRIAL_LIMIT {
+			spawn_offs_dir := rand.float32_range(0.0, math.PI * 2.0)
+			spawn_offs_dist := rand.float32_range(
+				ENEMY_SPAWN_DIST_RANGE[0],
+				ENEMY_SPAWN_DIST_RANGE[1],
+			)
+			spawn_pos := world.cam.pos_no_offs + zf4.calc_len_dir(spawn_offs_dist, spawn_offs_dir)
+
+			enemy_type := rand.float32() < 0.7 ? Enemy_Type.Melee : Enemy_Type.Ranger
+
+			if !is_valid_enemy_spawn_pos(spawn_pos, enemy_type, solid_colliders) {
+				continue
+			}
+
+			spawned = spawn_enemy(enemy_type, spawn_pos, world, solid_colliders)
+
+			break
+		}
+
+		if !spawned {
+			fmt.eprintfln("Failed to spawn enemy after %d trials.", SPAWN_TRIAL_LIMIT)
 		}
 
 		world.enemy_spawn_time = 0
-	}*/
+	}
 
 	//
 	// Player
@@ -328,7 +326,7 @@ world_tick :: proc(
 
 		enemy := &world.enemies.buf[i]
 
-		if !enemy_type_infos[enemy.type].ai_func(i, world) {
+		if !enemy_type_infos[enemy.type].ai_func(i, world, solid_colliders) {
 			return World_Tick_Result.Error
 		}
 

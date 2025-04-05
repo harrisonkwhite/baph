@@ -166,31 +166,53 @@ append_building_solid_colliders :: proc(
 }
 
 update_buildings :: proc(world: ^World) {
-	for &building in world.buildings {
-		// Update ceiling visibility.
-		building.ceiling_hidden = false
+	for i in 0 ..< len(world.buildings) {
+		for &building in world.buildings {
+			// Update ceiling visibility.
+			building.ceiling_hidden = is_something_in_building(&building, world)
 
-		if world.player.active {
-			inside_collider := zf4.Rect {
-				f32(building.rect.x * BUILDING_TILE_SIZE),
-				f32(building.rect.y * BUILDING_TILE_SIZE),
-				f32(building.rect.width * BUILDING_TILE_SIZE),
-				f32(building.rect.height * BUILDING_TILE_SIZE),
-			}
+			// Update ceiling alpha.
+			ALPHA_LERP_FACTOR: f32 : 0.2
 
-			player_movement_collider := gen_player_movement_collider(world.player.pos)
+			dest_alpha: f32 = building.ceiling_hidden ? 0.0 : 1.0
+			building.ceiling_alpha += (dest_alpha - building.ceiling_alpha) * ALPHA_LERP_FACTOR
+		}
+	}
+}
 
-			if zf4.do_rects_inters(inside_collider, player_movement_collider) {
-				building.ceiling_hidden = true
-			}
+is_something_in_building :: proc(building: ^Building, world: ^World) -> bool {
+	inside_collider := zf4.Rect {
+		f32(building.rect.x * BUILDING_TILE_SIZE),
+		f32(building.rect.y * BUILDING_TILE_SIZE),
+		f32(building.rect.width * BUILDING_TILE_SIZE),
+		f32(building.rect.height * BUILDING_TILE_SIZE),
+	}
+
+	// Test for player collision.
+	if world.player.active {
+		player_movement_collider := gen_player_movement_collider(world.player.pos)
+
+		if zf4.do_rects_inters(inside_collider, player_movement_collider) {
+			return true
+		}
+	}
+
+	// Test for enemy collisions.
+	for i in 0 ..< ENEMY_LIMIT {
+		if world.enemies.activity[i] {
+			continue
 		}
 
-		// Update ceiling alpha.
-		ALPHA_LERP_FACTOR: f32 : 0.2
+		enemy := &world.enemies.buf[i]
 
-		dest_alpha: f32 = building.ceiling_hidden ? 0.0 : 1.0
-		building.ceiling_alpha += (dest_alpha - building.ceiling_alpha) * ALPHA_LERP_FACTOR
+		enemy_movement_collider := gen_enemy_movement_collider(enemy.type, enemy.pos)
+
+		if zf4.do_rects_inters(inside_collider, enemy_movement_collider) {
+			return true
+		}
 	}
+
+	return false
 }
 
 append_building_render_tasks :: proc(

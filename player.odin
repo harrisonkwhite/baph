@@ -124,15 +124,39 @@ run_player_tick :: proc(
 	// Door Interaction
 	//
 	if zf4.is_key_pressed(zf4.Key_Code.E, zf4_data.input_state, zf4_data.input_state_last) {
-		player_movement_collider := gen_player_movement_collider(world.player.pos)
 		player_dmg_collider := gen_player_damage_collider(world.player.pos)
 
 		for &building in world.buildings {
 			if building.door_open {
 				door_solid_collider := gen_door_solid_collider(&building)
 
+				// Cancel if player is in door.
+				player_movement_collider := gen_player_movement_collider(world.player.pos)
+
 				if zf4.do_rects_inters(player_movement_collider, door_solid_collider) {
 					continue
+				}
+
+				// Cancel if enemy is in door.
+				enemy_collision_found := false
+
+				for i in 0 ..< ENEMY_LIMIT {
+					if !world.enemies.activity[i] {
+						continue
+					}
+
+					enemy := &world.enemies.buf[i]
+
+					enemy_movement_collider := gen_enemy_movement_collider(enemy.type, enemy.pos)
+
+					if zf4.do_rects_inters(enemy_movement_collider, door_solid_collider) {
+						enemy_collision_found = true
+						break
+					}
+				}
+
+				if enemy_collision_found {
+					break
 				}
 			}
 
