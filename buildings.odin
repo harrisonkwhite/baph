@@ -366,6 +366,6 @@ gen_door_interaction_collider :: proc(building: ^Building) -> zf4.Rect {
 		{building.rect.x + building.door_x, building.rect.y + building.rect.height},
 	)
 
-	return gen_collider_from_sprite(Sprite.Door_Closed, pos, {0.0, 1.0})
+	return gen_collider_rect_from_sprite(Sprite.Door_Closed, pos, {0.0, 1.0})
 }
 

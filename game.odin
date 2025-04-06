@@ -45,11 +45,10 @@ Shader_Prog :: enum {
 
 Sprite :: enum {
 	Player,
-	Minion,
 	Melee_Enemy,
 	Ranger_Enemy,
-	Sword,
-	Shield,
+	Pistol,
+	Pickaxe,
 	Projectile,
 	Wall,
 	Door_Border_Left,
@@ -64,12 +63,11 @@ Sprite :: enum {
 
 SPRITE_SRC_RECTS :: [len(Sprite)]zf4.Rect_I {
 	Sprite.Player             = {8, 0, 24, 40},
-	Sprite.Minion             = {32, 0, 24, 32},
 	Sprite.Melee_Enemy        = {0, 40, 24, 40},
 	Sprite.Ranger_Enemy       = {24, 40, 24, 32},
-	Sprite.Sword              = {64, 1, 32, 6},
-	Sprite.Shield             = {48, 32, 8, 32},
-	Sprite.Projectile         = {64, 8, 16, 8},
+	Sprite.Pistol             = {40, 0, 24, 8},
+	Sprite.Pickaxe            = {64, 0, 32, 8},
+	Sprite.Projectile         = {64, 10, 16, 4},
 	Sprite.Wall               = {72, 40, 16, 48},
 	Sprite.Door_Border_Left   = {88, 40, 16, 48},
 	Sprite.Door_Border_Right  = {104, 40, 16, 48},
@@ -87,7 +85,7 @@ Input_Binding :: enum {
 	Move_Down,
 	Move_Up,
 	Attack,
-	Shield,
+	Interact,
 }
 
 Input_Binding_Setting :: struct {
@@ -302,9 +300,9 @@ get_default_input_binding_settings :: proc() -> [len(Input_Binding)]Input_Bindin
 				code     = int(zf4.Mouse_Button_Code.Left),
 				is_mouse = true,
 			}
-		case Input_Binding.Shield:
+		case Input_Binding.Interact:
 			settings[i] = {
-				code     = int(zf4.Key_Code.Left_Shift),
+				code     = int(zf4.Key_Code.E),
 				is_mouse = false,
 			}
 		}
@@ -325,8 +323,8 @@ get_input_binding_name :: proc(binding: Input_Binding) -> string {
 		return "Move Up"
 	case Input_Binding.Attack:
 		return "Attack"
-	case Input_Binding.Shield:
-		return "Shield"
+	case Input_Binding.Interact:
+		return "Interact"
 	}
 
 	return ""

@@ -20,20 +20,21 @@ DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE :: 0.2
 DAMAGE_TEXT_FADE_MULT :: 0.8
 
 World :: struct {
-	mem_arena:           mem.Arena,
-	mem_arena_buf:       []byte,
-	mem_arena_allocator: mem.Allocator,
-	player:              Player,
-	minions:             [MINION_CNT]Minion,
-	enemies:             Enemies,
-	enemy_spawn_time:    int,
-	projectiles:         [PROJECTILE_LIMIT]Projectile,
-	proj_cnt:            int,
-	hitmasks:            [HITMASK_LIMIT]Hitmask,
-	hitmask_active_cnt:  int,
-	buildings:           []Building,
-	dmg_texts:           [DAMAGE_TEXT_LIMIT]Damage_Text,
-	cam:                 Camera,
+	mem_arena:                  mem.Arena,
+	mem_arena_buf:              []byte,
+	mem_arena_allocator:        mem.Allocator,
+	player:                     Player,
+	enemies:                    Enemies,
+	enemy_spawn_time:           int,
+	projectiles:                [PROJECTILE_LIMIT]Projectile,
+	proj_cnt:                   int,
+	weapon_drops:               Weapon_Drops,
+	weapon_drop_selected_index: int,
+	hitmasks:                   [HITMASK_LIMIT]Hitmask,
+	hitmask_active_cnt:         int,
+	buildings:                  []Building,
+	dmg_texts:                  [DAMAGE_TEXT_LIMIT]Damage_Text,
+	cam:                        Camera,
 }
 
 World_Layered_Render_Task :: struct {
@@ -126,6 +127,8 @@ init_world :: proc(world: ^World) -> bool {
 		world,
 	)
 
+	spawn_weapon_drop(Weapon_Type.Pickaxe, world.player.pos + {80.0, 0.0}, &world.weapon_drops)
+
 	world.cam.pos_no_offs = world.player.pos
 
 	return true
@@ -169,7 +172,32 @@ world_tick :: proc(
 		}
 	}
 
-	update_minions(world, solid_colliders) // TEMP
+	// NOTE: Should the below be moved in with player code?
+	{
+		success: bool
+		world.weapon_drop_selected_index, success = get_selected_weapon_drop(
+			&world.weapon_drops,
+			world.player.pos,
+		)
+
+		if !success {
+			return World_Tick_Result.Error
+		}
+
+		if world.weapon_drop_selected_index != -1 {
+			if is_input_pressed(
+				&game_config.input_binding_settings[Input_Binding.Interact],
+				zf4_data.input_state,
+				zf4_data.input_state_last,
+			) {
+				wd := &world.weapon_drops.buf[world.weapon_drop_selected_index]
+				world.player.weapon = {
+					type = wd.type,
+				}
+				world.weapon_drops.actives -= {world.weapon_drop_selected_index}
+			}
+		}
+	}
 
 	update_buildings(world)
 
@@ -413,6 +441,8 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		zf4_data.rendering_context.display_size,
 	)
 
+	render_weapon_drops(&world.weapon_drops, &zf4_data.rendering_context, zf4_data.textures)
+
 	render_tasks: [dynamic]World_Layered_Render_Task
 	render_tasks.allocator = context.temp_allocator
 
@@ -420,10 +450,6 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		if !append_player_render_tasks(&render_tasks, &world.player) {
 			return false
 		}
-	}
-
-	if !append_minion_world_render_tasks(&render_tasks, world.minions[:]) {
-		return false
 	}
 
 	if !append_enemy_world_render_tasks(&render_tasks, &world.enemies) {
@@ -526,6 +552,7 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		zf4_data.textures,
 	)
 
+	// Render damage text.
 	for dt in world.dmg_texts {
 		dt_str_buf: [16]u8
 		dt_str := fmt.bprintf(dt_str_buf[:], "%d", -dt.dmg)
@@ -540,6 +567,7 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		)
 	}
 
+	// Render player health bar.
 	player_hp_bar_height: f32 = 20.0
 	player_hp_bar_rect := zf4.Rect {
 		f32(zf4_data.rendering_context.display_size.x) * 0.05,
@@ -565,6 +593,26 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		zf4.calc_rect_center_right(player_hp_bar_rect) + {12.0, 0.0},
 		zf4.Str_Hor_Align.Left,
 	)
+
+	//
+	if world.weapon_drop_selected_index != -1 {
+		wd := &world.weapon_drops.buf[world.weapon_drop_selected_index]
+
+		str_buf: [16]byte
+		str := fmt.bprintf(str_buf[:], "[E] %s", get_weapon_name(wd.type))
+
+		zf4.render_str(
+			&zf4_data.rendering_context,
+			str,
+			int(Font.EB_Garamond_40),
+			zf4_data.fonts,
+			{
+				f32(zf4_data.rendering_context.display_size.x) * 0.95,
+				f32(zf4_data.rendering_context.display_size.y) * 0.9,
+			},
+			zf4.Str_Hor_Align.Right,
+		)
+	}
 
 	return true
 }
@@ -661,7 +709,7 @@ proc_solid_collisions :: proc(vel: ^zf4.Vec_2D, collider: zf4.Rect, other_collid
 	}
 }
 
-gen_collider_from_sprite :: proc(
+gen_collider_rect_from_sprite :: proc(
 	sprite: Sprite,
 	pos: zf4.Vec_2D,
 	origin := zf4.Vec_2D{0.5, 0.5},
@@ -674,6 +722,26 @@ gen_collider_from_sprite :: proc(
 		f32(src_rects[sprite].width),
 		f32(src_rects[sprite].height),
 	}
+}
+
+gen_collider_poly_from_sprite :: proc(
+	sprite: Sprite,
+	pos: zf4.Vec_2D,
+	origin := zf4.Vec_2D{0.5, 0.5},
+	rot: f32 = 0.0,
+	allocator := context.allocator,
+) -> (
+	zf4.Poly,
+	bool,
+) {
+	src_rects := SPRITE_SRC_RECTS
+	return zf4.alloc_quad_poly_rotated(
+		pos,
+		{f32(src_rects[sprite].width), f32(src_rects[sprite].height)},
+		origin,
+		rot,
+		allocator,
+	)
 }
 
 spawn_projectile :: proc(

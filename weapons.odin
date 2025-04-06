@@ -3,6 +3,8 @@ package apocalypse
 import "core:math"
 import "zf4"
 
+WEAPON_DROP_LIMIT :: 8
+
 SWORD_DMG :: 10
 SWORD_KNOCKBACK: f32 : 6.0
 SWORD_HITBOX_SIZE :: 32.0
@@ -27,8 +29,41 @@ Weapon :: struct {
 }
 
 Weapon_Type :: enum {
-	Sword,
-	Bow,
+	Pistol,
+	Pickaxe,
+}
+
+Weapon_Drop :: struct {
+	type: Weapon_Type,
+	pos:  zf4.Vec_2D,
+	rot:  f32,
+}
+
+Weapon_Drops :: struct {
+	buf:     [WEAPON_DROP_LIMIT]Weapon_Drop,
+	actives: bit_set[0 ..< WEAPON_DROP_LIMIT],
+}
+
+get_weapon_name :: proc(type: Weapon_Type) -> string {
+	switch type {
+	case .Pistol:
+		return "Pistol"
+	case .Pickaxe:
+		return "Pickaxe"
+	}
+
+	return ""
+}
+
+get_weapon_sprite :: proc(type: Weapon_Type) -> Sprite {
+	switch type {
+	case .Pistol:
+		return Sprite.Pistol
+	case .Pickaxe:
+		return Sprite.Pickaxe
+	}
+
+	return nil
 }
 
 run_weapon_tick :: proc(
@@ -69,7 +104,18 @@ run_weapon_tick :: proc(
 		weapon.attack_break -= 1
 	} else {
 		switch weapon.type {
-		case Weapon_Type.Sword:
+		case Weapon_Type.Pistol:
+			if attack_input_pressed {
+				spawn_projectile(
+					world.player.pos,
+					12.0,
+					weapon.aim_dir,
+					1,
+					{Damage_Flag.Damage_Enemy},
+					world,
+				)
+			}
+		case Weapon_Type.Pickaxe:
 			if attack_input_down {
 				if weapon.charge_time < SWORD_CHARGE_TIME {
 					weapon.charge_time += 1
@@ -98,24 +144,12 @@ run_weapon_tick :: proc(
 				weapon.charge_time = 0
 				weapon.rot_offs_axis_positive = !weapon.rot_offs_axis_positive
 			}
-
-		case Weapon_Type.Bow:
-			if attack_input_pressed {
-				spawn_projectile(
-					world.player.pos,
-					12.0,
-					weapon.aim_dir,
-					1,
-					{Damage_Flag.Damage_Enemy},
-					world,
-				)
-			}
 		}
 	}
 
 	rot_offs_dest: f32 = 0.0
 
-	if weapon.type == Weapon_Type.Sword {
+	if weapon.type == Weapon_Type.Pickaxe {
 		// TEMP
 		rot_offs_dest = weapon.rot_offs_axis_positive ? SWORD_ROT_OFFS : -SWORD_ROT_OFFS
 	}
@@ -134,7 +168,19 @@ append_weapon_render_task :: proc(
 	task: World_Layered_Render_Task
 
 	switch weapon.type {
-	case Weapon_Type.Sword:
+	case .Pistol:
+		if !append_world_render_task(
+			tasks,
+			pos,
+			Sprite.Pistol,
+			sort_depth,
+			origin = {0.0, 0.5},
+			rot = weapon.aim_dir,
+		) {
+			return false
+		}
+
+	case .Pickaxe:
 		rot_offs_charge_time := max(
 			f32(weapon.charge_time) - (SWORD_CHARGE_TIME * SWORD_CHARGE_ROT_TIME_MULT),
 			0.0,
@@ -146,24 +192,105 @@ append_weapon_render_task :: proc(
 		sword_rot :=
 			weapon.aim_dir + weapon.rot_offs + (rot_offs_charge_offs * math.sign(weapon.rot_offs))
 
-		task = {
-			pos        = pos + zf4.calc_len_dir(SWORD_OFFS_DIST, sword_rot),
-			origin     = {0.0, 0.5},
-			scale      = {1.0, 1.0},
-			rot        = sword_rot,
-			alpha      = 1.0,
-			sprite     = Sprite.Sword,
-			sort_depth = sort_depth,
+		if !append_world_render_task(
+			tasks,
+			pos + zf4.calc_len_dir(SWORD_OFFS_DIST, sword_rot),
+			Sprite.Pickaxe,
+			sort_depth,
+			origin = {0.0, 0.5},
+			rot = sword_rot,
+		) {
+			return false
 		}
-
-	case Weapon_Type.Bow:
-	}
-
-	if n, err := append(tasks, task); err != nil {
-		return false
 	}
 
 	return true
+}
+
+spawn_weapon_drop :: proc(
+	type: Weapon_Type,
+	pos: zf4.Vec_2D,
+	weapon_drops: ^Weapon_Drops,
+) -> bool {
+	for i in 0 ..< WEAPON_DROP_LIMIT {
+		if i in weapon_drops.actives {
+			continue
+		}
+
+		weapon_drops.buf[i] = {
+			type = type,
+			pos  = pos,
+		}
+
+		weapon_drops.actives += {i}
+
+		return true
+	}
+
+	return false
+}
+
+get_selected_weapon_drop :: proc(
+	weapon_drops: ^Weapon_Drops,
+	player_pos: zf4.Vec_2D,
+) -> (
+	int,
+	bool,
+) {
+	player_collider := gen_player_movement_collider(player_pos)
+
+	wd_selected_index := -1
+
+	for i in 0 ..< WEAPON_DROP_LIMIT {
+		wd := &weapon_drops.buf[i]
+
+		if i not_in weapon_drops.actives {
+			continue
+		}
+
+		wd_sprite := get_weapon_sprite(wd.type)
+		wd_collider, wd_collider_generated := gen_collider_poly_from_sprite(
+			wd_sprite,
+			wd.pos,
+			rot = wd.rot,
+			allocator = context.temp_allocator,
+		)
+
+		if !wd_collider_generated {
+			return wd_selected_index, false
+		}
+
+		if zf4.does_poly_inters_with_rect(wd_collider, player_collider) {
+			wd_selected_index = i
+		}
+	}
+
+	return wd_selected_index, true
+}
+
+render_weapon_drops :: proc(
+	weapon_drops: ^Weapon_Drops,
+	rendering_context: ^zf4.Rendering_Context,
+	textures: ^zf4.Textures,
+) {
+	sprite_src_rects := SPRITE_SRC_RECTS
+
+	for i in 0 ..< WEAPON_DROP_LIMIT {
+		if i not_in weapon_drops.actives {
+			continue
+		}
+
+		wd := &weapon_drops.buf[i]
+		sprite := get_weapon_sprite(wd.type)
+
+		zf4.render_texture(
+			rendering_context,
+			int(Texture.All),
+			textures,
+			sprite_src_rects[sprite],
+			wd.pos,
+		)
+	}
 }
 
 calc_weapon_move_spd_mult :: proc(weapon: ^Weapon) -> f32 {

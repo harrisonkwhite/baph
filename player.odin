@@ -109,13 +109,6 @@ run_player_tick :: proc(
 		}
 	}
 
-	// TEMP:
-	if zf4.is_key_pressed(zf4.Key_Code.Tab, zf4_data.input_state, zf4_data.input_state_last) {
-		world.player.weapon = {
-			type = Weapon_Type.Bow,
-		}
-	}
-
 	if !run_weapon_tick(world, game_config, zf4_data) {
 		return false
 	}
@@ -234,7 +227,7 @@ damage_player :: proc(world: ^World, dmg_info: Damage_Info) {
 }
 
 gen_player_movement_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {
-	spr_collider := gen_collider_from_sprite(Sprite.Player, player_pos)
+	spr_collider := gen_collider_rect_from_sprite(Sprite.Player, player_pos)
 
 	mv_collider := spr_collider
 	mv_collider.height = spr_collider.height / 4.0
@@ -243,6 +236,6 @@ gen_player_movement_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {
 }
 
 gen_player_damage_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {
-	return gen_collider_from_sprite(Sprite.Player, player_pos)
+	return gen_collider_rect_from_sprite(Sprite.Player, player_pos)
 }
 

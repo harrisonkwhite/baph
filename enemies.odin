@@ -415,7 +415,7 @@ damage_enemy :: proc(enemy_index: int, world: ^World, dmg_info: Damage_Info) {
 
 gen_enemy_movement_collider :: proc(type: Enemy_Type, enemy_pos: zf4.Vec_2D) -> zf4.Rect {
 	type_infos := ENEMY_TYPE_INFOS
-	spr_collider := gen_collider_from_sprite(type_infos[type].sprite, enemy_pos)
+	spr_collider := gen_collider_rect_from_sprite(type_infos[type].sprite, enemy_pos)
 
 	mv_collider := spr_collider
 	mv_collider.height = spr_collider.height / 4.0
@@ -425,6 +425,6 @@ gen_enemy_movement_collider :: proc(type: Enemy_Type, enemy_pos: zf4.Vec_2D) -> 
 
 gen_enemy_damage_collider :: proc(type: Enemy_Type, enemy_pos: zf4.Vec_2D) -> zf4.Rect {
 	type_infos := ENEMY_TYPE_INFOS
-	return gen_collider_from_sprite(type_infos[type].sprite, enemy_pos)
+	return gen_collider_rect_from_sprite(type_infos[type].sprite, enemy_pos)
 }
 
