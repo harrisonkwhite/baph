@@ -1,10 +1,10 @@
-package apocalypse
+package baph
 
 import "core:fmt"
 import "core:mem"
 import "zf4"
 
-GAME_TITLE :: "Apocalypse"
+GAME_TITLE :: "Behold a Pale Horse"
 
 Game :: struct {
 	config:       Game_Config,

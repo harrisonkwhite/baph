@@ -1,4 +1,4 @@
-package apocalypse
+package baph
 
 import "core:fmt"
 import "core:mem"
@@ -6,7 +6,7 @@ import "zf4"
 
 MEM_ARENA_SIZE :: mem.Megabyte * 2
 
-TITLE_FONT :: Font.EB_Garamond_128
+TITLE_FONT :: Font.EB_Garamond_96
 TITLE_Y_PERC :: 0.2
 
 HOME_BUTTON_FONT :: Font.EB_Garamond_48
