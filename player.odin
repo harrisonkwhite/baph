@@ -11,8 +11,11 @@ PLAYER_INV_TIME_LIMIT :: 30
 PLAYER_DMG_FLASH_TIME :: 5
 PLAYER_COMBAT_RADIUS :: 256.0
 
+PLAYER_DEATH_TIME :: 90
+
 Player :: struct {
 	active:     bool,
+	killed:     bool,
 	pos:        zf4.Vec_2D,
 	vel:        zf4.Vec_2D,
 	hp:         int,

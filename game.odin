@@ -5,6 +5,7 @@ import "core:mem"
 import "zf4"
 
 GAME_TITLE :: "Behold a Pale Horse"
+FADE_ALPHA_CHANGE :: 0.05 // NOTE: This will likely need to be variable later on.
 
 Game :: struct {
 	config:       Game_Config,
@@ -12,6 +13,9 @@ Game :: struct {
 	title_screen: Title_Screen,
 	world:        World,
 	mouse_pos:    zf4.Vec_2D, // TEMP? Just pass input state into render function?
+	fade:         bool,
+	fade_alpha:   f32,
+	fade_ev:      proc(game: ^Game),
 }
 
 Game_Config :: struct {
@@ -153,13 +157,24 @@ exec_game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 			zf4_data.exit_game^ = true
 		}
 	} else {
-		world_tick_res := world_tick(&game.world, &game.config, zf4_data)
-
-		if world_tick_res == World_Tick_Result.Go_To_Title {
-			clean_world(&game.world)
-			game.in_world = false
-			init_title_screen(&game.title_screen, &game.config)
+		if !world_tick(game, zf4_data) {
+			return false
 		}
+	}
+
+	assert(game.fade_alpha >= 0.0 && game.fade_alpha <= 1.0)
+
+	if game.fade {
+		game.fade_alpha += min(FADE_ALPHA_CHANGE, 1.0 - game.fade_alpha)
+
+		if game.fade_alpha == 1.0 && game.fade_ev != nil {
+			game.fade_ev(game)
+			game.fade_ev = nil
+
+			game.fade = false
+		}
+	} else {
+		game.fade_alpha -= min(FADE_ALPHA_CHANGE, game.fade_alpha)
 	}
 
 	zf4_data.fullscreen_state_ideal^ = game.config.fullscreen
@@ -181,6 +196,17 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 			return false
 		}
 	}
+
+	zf4.render_rect(
+		&zf4_data.rendering_context,
+		{
+			0.0,
+			0.0,
+			f32(zf4_data.rendering_context.display_size.x),
+			f32(zf4_data.rendering_context.display_size.y),
+		},
+		{0.0, 0.0, 0.0, game.fade_alpha},
+	)
 
 	zf4.render_texture(
 		&zf4_data.rendering_context,

@@ -24,6 +24,7 @@ World :: struct {
 	mem_arena_buf:              []byte,
 	mem_arena_allocator:        mem.Allocator,
 	player:                     Player,
+	player_death_time:          int,
 	enemies:                    Enemies,
 	enemy_spawn_time:           int,
 	projectiles:                [PROJECTILE_LIMIT]Projectile,
@@ -89,7 +90,7 @@ Damage_Text :: struct {
 
 init_world :: proc(world: ^World) -> bool {
 	assert(world != nil)
-	mem.zero_item(world)
+	assert(mem.check_zero_ptr(world, size_of(world^)))
 
 	world.mem_arena_buf = make([]byte, WORLD_MEM_ARENA_SIZE)
 
@@ -134,11 +135,9 @@ init_world :: proc(world: ^World) -> bool {
 	return true
 }
 
-world_tick :: proc(
-	world: ^World,
-	game_config: ^Game_Config,
-	zf4_data: ^zf4.Game_Tick_Func_Data,
-) -> World_Tick_Result {
+world_tick :: proc(game: ^Game, zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
+	world := &game.world
+
 	enemy_type_infos := ENEMY_TYPE_INFOS
 
 	mouse_cam_pos := display_to_camera_pos(
@@ -155,7 +154,7 @@ world_tick :: proc(
 	)
 
 	if !solid_colliders_generated {
-		return World_Tick_Result.Error
+		return false
 	}
 
 	//
@@ -167,8 +166,8 @@ world_tick :: proc(
 	// Player
 	//
 	if world.player.active {
-		if !run_player_tick(world, solid_colliders, game_config, zf4_data) {
-			return World_Tick_Result.Error
+		if !run_player_tick(world, solid_colliders, &game.config, zf4_data) {
+			return false
 		}
 	}
 
@@ -181,12 +180,12 @@ world_tick :: proc(
 		)
 
 		if !success {
-			return World_Tick_Result.Error
+			return false
 		}
 
 		if world.weapon_drop_selected_index != -1 {
 			if is_input_pressed(
-				&game_config.input_binding_settings[Input_Binding.Interact],
+				&game.config.input_binding_settings[Input_Binding.Interact],
 				zf4_data.input_state,
 				zf4_data.input_state_last,
 			) {
@@ -212,7 +211,7 @@ world_tick :: proc(
 		enemy := &world.enemies.buf[i]
 
 		if !enemy_type_infos[enemy.type].ai_func(i, world, solid_colliders) {
-			return World_Tick_Result.Error
+			return false
 		}
 
 		if enemy.flash_time > 0 {
@@ -265,7 +264,7 @@ world_tick :: proc(
 		)
 
 		if !proj_collider_generated {
-			return World_Tick_Result.Error
+			return false
 		}
 
 		dmg_info := Damage_Info {
@@ -360,8 +359,28 @@ world_tick :: proc(
 	//
 	assert(world.player.hp >= 0)
 
-	if world.player.hp == 0 {
+	if zf4.is_key_pressed(zf4.Key_Code.Space, zf4_data.input_state, zf4_data.input_state_last) {
+		world.player.hp = 0
+	}
+
+	if world.player.killed {
+		if world.player_death_time < PLAYER_DEATH_TIME {
+			world.player_death_time += 1
+		} else {
+			game.fade = true
+			game.fade_ev = proc(game: ^Game) {
+				assert(game.in_world)
+				clean_world(&game.world)
+				init_world(&game.world)
+			}
+		}
+	}
+
+	if world.player.active && world.player.hp == 0 {
+		apply_camera_shake(&world.cam, 3.0)
+
 		world.player.active = false
+		world.player.killed = true
 	}
 
 	//
@@ -423,12 +442,7 @@ world_tick :: proc(
 		}
 	}
 
-	// Handle title screen change request.
-	if zf4.is_key_pressed(zf4.Key_Code.Escape, zf4_data.input_state, zf4_data.input_state_last) {
-		return World_Tick_Result.Go_To_Title
-	}
-
-	return World_Tick_Result.Normal
+	return true
 }
 
 render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
@@ -620,6 +634,7 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 clean_world :: proc(world: ^World) {
 	assert(world != nil)
 	delete(world.mem_arena_buf)
+	mem.zero_item(world)
 }
 
 gen_world_solid_colliders :: proc(
