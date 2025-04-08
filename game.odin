@@ -90,6 +90,7 @@ Input_Binding :: enum {
 	Move_Up,
 	Attack,
 	Interact,
+	Pause,
 }
 
 Input_Binding_Setting :: struct {
@@ -331,6 +332,11 @@ get_default_input_binding_settings :: proc() -> [len(Input_Binding)]Input_Bindin
 				code     = int(zf4.Key_Code.E),
 				is_mouse = false,
 			}
+		case Input_Binding.Pause:
+			settings[i] = {
+				code     = int(zf4.Key_Code.Escape),
+				is_mouse = false,
+			}
 		}
 	}
 
@@ -351,6 +357,8 @@ get_input_binding_name :: proc(binding: Input_Binding) -> string {
 		return "Attack"
 	case Input_Binding.Interact:
 		return "Interact"
+	case Input_Binding.Pause:
+		return "Pause"
 	}
 
 	return ""

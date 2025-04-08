@@ -8,6 +8,7 @@ import "core:slice"
 import "zf4"
 
 WORLD_MEM_ARENA_SIZE :: 1 * mem.Megabyte
+WORLD_PAUSE_SCREEN_BG_ALPHA: f32 : 0.6
 
 PROJECTILE_LIMIT :: 512
 
@@ -23,6 +24,7 @@ World :: struct {
 	mem_arena:                  mem.Arena,
 	mem_arena_buf:              []byte,
 	mem_arena_allocator:        mem.Allocator,
+	paused:                     bool,
 	player:                     Player,
 	player_death_time:          int,
 	enemies:                    Enemies,
@@ -47,12 +49,6 @@ World_Layered_Render_Task :: struct {
 	sprite:     Sprite,
 	flash_time: int,
 	sort_depth: f32,
-}
-
-World_Tick_Result :: enum {
-	Normal,
-	Go_To_Title,
-	Error,
 }
 
 Projectile :: struct {
@@ -137,6 +133,14 @@ init_world :: proc(world: ^World) -> bool {
 
 world_tick :: proc(game: ^Game, zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 	world := &game.world
+
+	if zf4.is_key_pressed(zf4.Key_Code.Escape, zf4_data.input_state, zf4_data.input_state_last) {
+		world.paused = !world.paused
+	}
+
+	if world.paused {
+		return true
+	}
 
 	enemy_type_infos := ENEMY_TYPE_INFOS
 
@@ -625,6 +629,30 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 				f32(zf4_data.rendering_context.display_size.y) * 0.9,
 			},
 			zf4.Str_Hor_Align.Right,
+		)
+	}
+
+	if world.paused {
+		// Render pause screen.
+
+		// NOTE: Should the dark overlay be integrated into the greater game code?
+		zf4.render_rect(
+			&zf4_data.rendering_context,
+			{
+				0,
+				0,
+				f32(zf4_data.rendering_context.display_size.x),
+				f32(zf4_data.rendering_context.display_size.y),
+			},
+			{0.0, 0.0, 0.0, WORLD_PAUSE_SCREEN_BG_ALPHA},
+		)
+
+		zf4.render_str(
+			&zf4_data.rendering_context,
+			"Paused",
+			int(Font.EB_Garamond_96),
+			zf4_data.fonts,
+			zf4.to_vec_2d(zf4_data.rendering_context.display_size) / 2.0,
 		)
 	}
 
