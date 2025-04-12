@@ -21,23 +21,24 @@ DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE :: 0.2
 DAMAGE_TEXT_FADE_MULT :: 0.8
 
 World :: struct {
-	mem_arena:                  mem.Arena,
-	mem_arena_buf:              []byte,
-	mem_arena_allocator:        mem.Allocator,
-	paused:                     bool,
-	player:                     Player,
-	player_death_time:          int,
-	enemies:                    Enemies,
-	enemy_spawn_time:           int,
-	projectiles:                [PROJECTILE_LIMIT]Projectile,
-	proj_cnt:                   int,
-	weapon_drops:               Weapon_Drops,
-	weapon_drop_selected_index: int,
-	hitmasks:                   [HITMASK_LIMIT]Hitmask,
-	hitmask_active_cnt:         int,
-	buildings:                  []Building,
-	dmg_texts:                  [DAMAGE_TEXT_LIMIT]Damage_Text,
-	cam:                        Camera,
+	mem_arena:                       mem.Arena,
+	mem_arena_buf:                   []byte,
+	mem_arena_allocator:             mem.Allocator,
+	paused:                          bool,
+	pause_menu_button_hovered_index: int,
+	player:                          Player,
+	player_death_time:               int,
+	enemies:                         Enemies,
+	enemy_spawn_time:                int,
+	projectiles:                     [PROJECTILE_LIMIT]Projectile,
+	proj_cnt:                        int,
+	weapon_drops:                    Weapon_Drops,
+	weapon_drop_selected_index:      int,
+	hitmasks:                        [HITMASK_LIMIT]Hitmask,
+	hitmask_active_cnt:              int,
+	buildings:                       []Building,
+	dmg_texts:                       [DAMAGE_TEXT_LIMIT]Damage_Text,
+	cam:                             Camera,
 }
 
 World_Layered_Render_Task :: struct {
@@ -49,6 +50,12 @@ World_Layered_Render_Task :: struct {
 	sprite:     Sprite,
 	flash_time: int,
 	sort_depth: f32,
+}
+
+Pause_Menu_Button :: enum {
+	Resume,
+	Options,
+	Exit_To_Title,
 }
 
 Projectile :: struct {
@@ -139,6 +146,41 @@ world_tick :: proc(game: ^Game, zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 	}
 
 	if world.paused {
+		btns := gen_pause_menu_buttons(zf4_data.window_state_cache.size)
+
+		world.pause_menu_button_hovered_index = -1
+
+		for &btn, i in btns {
+			if is_button_hovered(&btn, zf4_data.input_state.mouse_pos, zf4_data.fonts) {
+				world.pause_menu_button_hovered_index = i
+			}
+		}
+
+		// TODO: Get gamepad support in.
+		// TODO: Maybe move this up?
+		if world.pause_menu_button_hovered_index != -1 {
+			if zf4.is_mouse_button_pressed(
+				zf4.Mouse_Button_Code.Left,
+				zf4_data.input_state,
+				zf4_data.input_state_last,
+			) {
+				switch Pause_Menu_Button(world.pause_menu_button_hovered_index) {
+				case .Resume:
+					world.paused = false
+				case .Options:
+				case .Exit_To_Title:
+					game.fade = true
+					game.fade_ev = proc(game: ^Game) {
+						assert(game.in_world)
+						clean_world(&game.world)
+						game.in_world = false
+						init_title_screen(&game.title_screen, &game.config)
+						// TODO: This callback needs to return a boolean due to potential error!
+					}
+				}
+			}
+		}
+
 		return true
 	}
 
@@ -647,13 +689,16 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 			{0.0, 0.0, 0.0, WORLD_PAUSE_SCREEN_BG_ALPHA},
 		)
 
-		zf4.render_str(
-			&zf4_data.rendering_context,
-			"Paused",
-			int(Font.EB_Garamond_96),
-			zf4_data.fonts,
-			zf4.to_vec_2d(zf4_data.rendering_context.display_size) / 2.0,
-		)
+		btns := gen_pause_menu_buttons(zf4_data.rendering_context.display_size)
+
+		for &btn, i in btns {
+			render_button(
+				&zf4_data.rendering_context,
+				&btn,
+				world.pause_menu_button_hovered_index == i,
+				zf4_data.fonts,
+			)
+		}
 	}
 
 	return true
@@ -919,5 +964,41 @@ spawn_damage_text :: proc(
 	}
 
 	return false
+}
+
+// TODO: Keep private to this file!
+gen_pause_menu_buttons :: proc(display_size: zf4.Vec_2D_I) -> [len(Pause_Menu_Button)]Button {
+	btns: [len(Pause_Menu_Button)]Button
+
+	y_span: f32 = 360.0
+	y_gap := y_span / (len(Pause_Menu_Button) + 1)
+
+	base_pos := zf4.Vec_2D{f32(display_size.x) / 2.0, (f32(display_size.y) - y_span) / 2.0}
+
+	for i in 0 ..< len(Pause_Menu_Button) {
+		y_offs := f32(i + 1) * f32(y_span / (len(Pause_Menu_Button) + 1))
+
+		btns[i] = {
+			pos        = base_pos + {0.0, y_offs},
+			font_index = int(Font.EB_Garamond_48),
+			hor_align  = zf4.Str_Hor_Align.Center,
+			ver_align  = zf4.Str_Ver_Align.Center,
+		}
+
+		btn_str: string
+
+		switch Pause_Menu_Button(i) {
+		case .Resume:
+			btn_str = "Resume"
+		case .Options:
+			btn_str = "Options"
+		case .Exit_To_Title:
+			btn_str = "Exit to Title"
+		}
+
+		fmt.bprint(btns[i].str_buf[:], btn_str)
+	}
+
+	return btns
 }
 
