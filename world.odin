@@ -12,6 +12,8 @@ WORLD_PAUSE_SCREEN_BG_ALPHA: f32 : 0.6
 
 PROJECTILE_LIMIT :: 512
 
+BREAKABLE_LIMIT :: 64
+
 HITMASK_LIMIT :: 64
 
 DAMAGE_TEXT_LIMIT :: 64
@@ -38,6 +40,8 @@ World :: struct {
 	hitmask_active_cnt:              int,
 	buildings:                       []Building,
 	dmg_texts:                       [DAMAGE_TEXT_LIMIT]Damage_Text,
+	breakables:                      [BREAKABLE_LIMIT]Breakable,
+	breakables_active:               int,
 	cam:                             Camera,
 }
 
@@ -133,6 +137,8 @@ init_world :: proc(world: ^World) -> bool {
 
 	spawn_weapon_drop(Weapon_Type.Pickaxe, world.player.pos + {80.0, 0.0}, &world.weapon_drops)
 
+	spawn_breakable({300, 300}, Breakable_Type.Crate, world)
+
 	world.cam.pos_no_offs = world.player.pos
 
 	return true
@@ -203,14 +209,8 @@ world_tick :: proc(game: ^Game, zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 		return false
 	}
 
-	//
-	// Enemy Spawning
-	//
 	proc_enemy_spawning(world, solid_colliders)
 
-	//
-	// Player
-	//
 	if world.player.active {
 		if !run_player_tick(world, solid_colliders, &game.config, zf4_data) {
 			return false
@@ -246,9 +246,6 @@ world_tick :: proc(game: ^Game, zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 
 	update_buildings(world)
 
-	//
-	// Enemy AI
-	//
 	for i in 0 ..< ENEMY_LIMIT {
 		if !world.enemies.activity[i] {
 			continue
@@ -398,6 +395,32 @@ world_tick :: proc(game: ^Game, zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 				}
 			}
 		}
+
+		for i in 0 ..< world.breakables_active {
+			breakable := &world.breakables[i]
+			breakable_hit_collider := gen_breakable_hit_collider(breakable.pos, breakable.type)
+
+			if zf4.does_poly_inters_with_rect(hm.collider, breakable_hit_collider) {
+				breakable.life = max(breakable.life - hm.dmg_info.dmg, 0)
+				breakable.shake = max(3.0, breakable.shake)
+			}
+		}
+	}
+
+	//
+	// Processing Crate Shaking and Death
+	//
+	for i in 0 ..< world.breakables_active {
+		crate := &world.breakables[i]
+
+		crate.shake *= 0.9
+
+		assert(crate.life >= 0)
+
+		if crate.life == 0 {
+			world.breakables_active -= 1
+			world.breakables[i] = world.breakables[world.breakables_active]
+		}
 	}
 
 	//
@@ -520,6 +543,13 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 		return false
 	}
 
+	if !append_breakable_world_render_tasks(
+		&render_tasks,
+		world.breakables[:world.breakables_active],
+	) {
+		return false
+	}
+
 	for &building in world.buildings {
 		if !append_building_render_tasks(&render_tasks, &building) {
 			return false
@@ -569,14 +599,6 @@ render_world :: proc(world: ^World, zf4_data: ^zf4.Game_Render_Func_Data) -> boo
 				"u_col",
 				zf4.WHITE.rgb,
 			)
-			/*zf4.set_surface_shader_prog_uniform(
-				&zf4_data.rendering_context,
-				"u_intensity",
-				min(
-					f32(task.flash_time) / (WORLD_LAYERED_RENDER_TASK_FLASH_TIME_LIMIT / 2.0),
-					1.0,
-				),
-			)*/
 			zf4.render_surface(&zf4_data.rendering_context, 0)
 		} else {
 			zf4.render_texture(
@@ -724,6 +746,10 @@ gen_world_solid_colliders :: proc(
 		if !append_building_solid_colliders(&colliders, &building) {
 			return colliders[:], false
 		}
+	}
+
+	if !append_breakable_solid_colliders(&colliders, world.breakables[:world.breakables_active]) {
+		return colliders[:], false
 	}
 
 	return colliders[:], true
@@ -964,6 +990,19 @@ spawn_damage_text :: proc(
 	}
 
 	return false
+}
+
+// TEMP
+gen_crate_collider :: proc(pos: zf4.Vec_2D) -> zf4.Rect {
+	sprite_src_rects := SPRITE_SRC_RECTS
+	crate_size := zf4.calc_rect_i_size(sprite_src_rects[Sprite.Crate])
+
+	return {
+		pos.x - (f32(crate_size.y) / 2.0),
+		pos.y - (f32(crate_size.x) / 2.0),
+		f32(crate_size.x),
+		f32(crate_size.y),
+	}
 }
 
 // TODO: Keep private to this file!
