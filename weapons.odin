@@ -86,11 +86,13 @@ update_player_weapon :: proc(game: ^Game, zf4_data: ^zf4.Game_Tick_Func_Data) ->
 		switch weapon.type {
 		case Weapon_Type.Pistol:
 			if attack_input_pressed {
+				apply_camera_shake(&game.cam, 2.0)
+
 				spawn_projectile(
 					game.player.pos,
-					12.0,
+					16.0,
 					weapon.aim_dir,
-					1,
+					5,
 					{Damage_Flag.Damage_Enemy},
 					game,
 				)

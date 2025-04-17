@@ -61,14 +61,14 @@ ENEMY_TYPE_INFOS :: [len(Enemy_Type)]Enemy_Type_Info {
 	Enemy_Type.Melee = {
 		ai_func = melee_enemy_ai,
 		sprite = Sprite.Melee_Enemy,
-		hp_limit = 100,
+		hp_limit = 30,
 		contact_dmg = 2,
 		contact_kb = 9.0,
 	},
 	Enemy_Type.Ranger = {
 		ai_func = ranger_enemy_ai,
 		sprite = Sprite.Ranger_Enemy,
-		hp_limit = 70,
+		hp_limit = 10,
 		contact_dmg = 1,
 		contact_kb = 4.0,
 	},
@@ -98,6 +98,16 @@ proc_enemy_deaths :: proc(game: ^Game) {
 
 		if game.enemies[i].hp == 0 {
 			apply_camera_shake(&game.cam, 3.0)
+
+			item_drop_cnt := int(rand.float32_range(3.0, 6.0))
+
+			for j in 0 ..< item_drop_cnt {
+				drop_vel_len := rand.float32_range(1.5, 4.0)
+				drop_vel_dir := (math.TAU / f32(item_drop_cnt)) * f32(j)
+				drop_vel := zf4.calc_len_dir(drop_vel_len, drop_vel_dir)
+
+				spawn_item_drop(Item_Type.Rock, 1, game.enemies[i].pos, game, drop_vel)
+			}
 
 			game.enemy_cnt -= 1
 			game.enemies[i] = game.enemies[game.enemy_cnt]

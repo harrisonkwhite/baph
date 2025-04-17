@@ -24,6 +24,8 @@ DAMAGE_TEXT_FADE_MULT :: 0.8
 Game :: struct {
 	paused:             bool,
 	player:             Player,
+	inventory:          Inventory,
+	inventory_open:     bool,
 	enemies:            [ENEMY_LIMIT]Enemy,
 	enemy_cnt:          int,
 	enemy_spawn_time:   int,
@@ -32,6 +34,8 @@ Game :: struct {
 	hitmasks:           [HITMASK_LIMIT]Hitmask,
 	hitmask_active_cnt: int,
 	buildings:          []Building,
+	item_drops:         [ITEM_DROP_LIMIT]Item_Drop,
+	item_drop_cnt:      int,
 	dmg_texts:          [DAMAGE_TEXT_LIMIT]Damage_Text,
 	cam:                Camera,
 	cursor_render_pos:  zf4.Vec_2D,
@@ -70,6 +74,7 @@ Sprite :: enum {
 	Left_Ceiling_Beam,
 	Right_Ceiling_Beam,
 	Ceiling,
+	Stone_Item,
 	Cursor,
 }
 
@@ -89,6 +94,7 @@ SPRITE_SRC_RECTS :: [len(Sprite)]zf4.Rect_I {
 	Sprite.Left_Ceiling_Beam  = {120, 24, 16, 16},
 	Sprite.Right_Ceiling_Beam = {136, 24, 16, 16},
 	Sprite.Ceiling            = {120, 40, 16, 16},
+	Sprite.Stone_Item         = {0, 80, 8, 8},
 	Sprite.Cursor             = {0, 8, 8, 8},
 }
 
@@ -165,6 +171,8 @@ main :: proc() {
 init_game :: proc(zf4_data: ^zf4.Game_Init_Func_Data) -> bool {
 	game := (^Game)(zf4_data.user_mem)
 
+	game.inventory.slots[0][0].quantity = 1
+
 	game.player = {
 		hp = PLAYER_HP_LIMIT,
 	}
@@ -174,6 +182,8 @@ init_game :: proc(zf4_data: ^zf4.Game_Init_Func_Data) -> bool {
 	if game.buildings == nil {
 		return false
 	}
+
+	spawn_item_drop(Item_Type.Rock, 1, {0.0, -200.0}, game)
 
 	return true
 }
@@ -191,6 +201,10 @@ game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 
 	if game.paused {
 		return true
+	}
+
+	if zf4.is_key_pressed(zf4.Key_Code.Tab, zf4_data.input_state, zf4_data.input_state_last) {
+		game.inventory_open = !game.inventory_open
 	}
 
 	game.hitmask_active_cnt = 0
@@ -215,6 +229,11 @@ game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 		}
 
 		proc_player_movement(&game.player, zf4_data.input_state, solid_colliders)
+	}
+
+	proc_item_drop_movement_and_collection(game)
+
+	if !game.player.killed {
 		update_player_weapon(game, zf4_data)
 	}
 
@@ -299,6 +318,10 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 		if !append_building_render_tasks(&render_tasks, &building) {
 			return false
 		}
+	}
+
+	if !append_item_drop_render_tasks(&render_tasks, game.item_drops[:game.item_drop_cnt]) {
+		return false
 	}
 
 	// IDEA: Add optional rendering of colliders, for debugging purposes.
@@ -417,6 +440,16 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 		zf4.calc_rect_center_right(player_hp_bar_rect) + {12.0, 0.0},
 		zf4.Str_Hor_Align.Left,
 	)
+
+	if game.inventory_open {
+		render_inventory(
+			&zf4_data.rendering_context,
+			&game.inventory,
+			{32.0, 32.0},
+			zf4_data.textures,
+			zf4_data.fonts,
+		)
+	}
 
 	zf4.render_texture(
 		&zf4_data.rendering_context,

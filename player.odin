@@ -26,8 +26,8 @@ proc_player_movement :: proc(
 	solid_colliders: []zf4.Rect,
 ) {
 	move_dir := calc_player_move_dir(input_state)
-	vel_lerp_targ := move_dir * PLAYER_MOVE_SPD * calc_weapon_move_spd_mult(&player.weapon)
-	player.vel = math.lerp(player.vel, vel_lerp_targ, f32(PLAYER_VEL_LERP_FACTOR))
+	vel_targ := move_dir * PLAYER_MOVE_SPD * calc_weapon_move_spd_mult(&player.weapon)
+	player.vel = math.lerp(player.vel, vel_targ, f32(PLAYER_VEL_LERP_FACTOR))
 
 	proc_solid_collisions(&player.vel, gen_player_movement_collider(player.pos), solid_colliders)
 
