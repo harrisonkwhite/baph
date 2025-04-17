@@ -20,17 +20,15 @@ assert_breakable_validity :: proc(breakable: ^Breakable) {
 	assert(breakable.shake >= 0.0)
 }
 
-spawn_breakable :: proc(pos: zf4.Vec_2D, type: Breakable_Type, world: ^World) -> bool {
-	assert(world != nil)
-
-	if world.breakables_active == BREAKABLE_LIMIT {
+spawn_breakable :: proc(pos: zf4.Vec_2D, type: Breakable_Type, game: ^Game) -> bool {
+	/*if game.breakables_active == BREAKABLE_LIMIT {
 		fmt.eprint("Failed to spawn breakable due to insufficient space!")
 		return false
 	}
 
-	breakable := &world.breakables[world.breakables_active]
+	breakable := &game.breakables[game.breakables_active]
 
-	world.breakables[world.breakables_active] = {
+	game.breakables[game.breakables_active] = {
 		pos  = pos,
 		type = type,
 	}
@@ -40,7 +38,7 @@ spawn_breakable :: proc(pos: zf4.Vec_2D, type: Breakable_Type, world: ^World) ->
 		breakable.life = 80
 	}
 
-	world.breakables_active += 1
+	game.breakables_active += 1*/
 
 	return true
 }
@@ -79,8 +77,8 @@ gen_breakable_hit_collider :: proc(pos: zf4.Vec_2D, type: Breakable_Type) -> zf4
 	return gen_collider_rect_from_sprite(get_breakable_sprite(type), pos)
 }
 
-append_breakable_world_render_tasks :: proc(
-	tasks: ^[dynamic]World_Layered_Render_Task,
+append_breakable_render_tasks :: proc(
+	tasks: ^[dynamic]Render_Task,
 	breakables: []Breakable,
 ) -> bool {
 	sprite_src_rects := SPRITE_SRC_RECTS
@@ -93,7 +91,7 @@ append_breakable_world_render_tasks :: proc(
 			f32(rand.float64_range(-breakable.shake, breakable.shake)),
 		}
 
-		if !append_world_render_task(tasks, breakable.pos + shake_offs, sprite, breakable.pos.y) {
+		if !append_render_task(tasks, breakable.pos + shake_offs, sprite, breakable.pos.y) {
 			return false
 		}
 	}

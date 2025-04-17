@@ -9,12 +9,8 @@ PLAYER_VEL_LERP_FACTOR :: 0.2
 PLAYER_HP_LIMIT :: 100
 PLAYER_INV_TIME_LIMIT :: 30
 PLAYER_DMG_FLASH_TIME :: 5
-PLAYER_COMBAT_RADIUS :: 256.0
-
-PLAYER_DEATH_TIME :: 90
 
 Player :: struct {
-	active:     bool,
 	killed:     bool,
 	pos:        zf4.Vec_2D,
 	vel:        zf4.Vec_2D,
@@ -24,110 +20,55 @@ Player :: struct {
 	weapon:     Weapon,
 }
 
-run_player_tick :: proc(
-	world: ^World,
+proc_player_movement :: proc(
+	player: ^Player,
+	input_state: ^zf4.Input_State,
 	solid_colliders: []zf4.Rect,
-	game_config: ^Game_Config,
-	zf4_data: ^zf4.Game_Tick_Func_Data,
-) -> bool {
-	player := &world.player
-
-	assert(player.active)
-
-	move_right := is_input_down(
-		&game_config.input_binding_settings[Input_Binding.Move_Right],
-		zf4_data.input_state,
-	)
-
-	move_left := is_input_down(
-		&game_config.input_binding_settings[Input_Binding.Move_Left],
-		zf4_data.input_state,
-	)
-
-	move_down := is_input_down(
-		&game_config.input_binding_settings[Input_Binding.Move_Down],
-		zf4_data.input_state,
-	)
-
-	move_up := is_input_down(
-		&game_config.input_binding_settings[Input_Binding.Move_Up],
-		zf4_data.input_state,
-	)
-
-	move_axis := zf4.Vec_2D {
-		f32(i32(move_right) - i32(move_left)),
-		f32(i32(move_down) - i32(move_up)),
-	}
-
-	move_dir := zf4.calc_normal_or_zero(move_axis)
-
+) {
+	move_dir := calc_player_move_dir(input_state)
 	vel_lerp_targ := move_dir * PLAYER_MOVE_SPD * calc_weapon_move_spd_mult(&player.weapon)
 	player.vel = math.lerp(player.vel, vel_lerp_targ, f32(PLAYER_VEL_LERP_FACTOR))
 
 	proc_solid_collisions(&player.vel, gen_player_movement_collider(player.pos), solid_colliders)
 
 	player.pos += player.vel
+}
 
-	if player.inv_time > 0 {
-		player.inv_time -= 1
+calc_player_move_dir :: proc(input_state: ^zf4.Input_State) -> zf4.Vec_2D {
+	assert(input_state != nil)
+
+	move_right := zf4.is_key_down(zf4.Key_Code.D, input_state)
+	move_left := zf4.is_key_down(zf4.Key_Code.A, input_state)
+	move_down := zf4.is_key_down(zf4.Key_Code.S, input_state)
+	move_up := zf4.is_key_down(zf4.Key_Code.W, input_state)
+
+	move_axis := zf4.Vec_2D {
+		f32(i32(move_right) - i32(move_left)),
+		f32(i32(move_down) - i32(move_up)),
 	}
 
-	if player.flash_time > 0 {
-		player.flash_time -= 1
+	return zf4.calc_normal_or_zero(move_axis)
+}
+
+proc_player_death :: proc(player: ^Player, cam: ^Camera) {
+	assert(!player.killed)
+
+	if player.hp == 0 {
+		apply_camera_shake(cam, 3.0)
+		player.killed = true
 	}
+}
 
-	//
-	// Handling Enemy Contacts
-	//
-	{
-		dmg_collider := gen_player_damage_collider(player.pos)
-		enemy_type_infos := ENEMY_TYPE_INFOS
-
-		for i in 0 ..< ENEMY_LIMIT {
-			if !world.enemies.activity[i] {
-				continue
-			}
-
-			enemy := &world.enemies.buf[i]
-			enemy_type_info := enemy_type_infos[enemy.type]
-
-			if Enemy_Type_Flag.Deals_Contact_Damage not_in enemy_type_info.flags {
-				continue
-			}
-
-			enemy_dmg_collider := gen_enemy_damage_collider(enemy.type, enemy.pos)
-
-			if zf4.do_rects_inters(dmg_collider, enemy_dmg_collider) {
-				kb_dir := zf4.calc_normal_or_zero(player.pos - enemy.pos)
-
-				dmg_info := Damage_Info {
-					dmg = enemy_type_info.contact_dmg,
-					kb  = kb_dir * enemy_type_info.contact_kb,
-				}
-
-				damage_player(world, dmg_info)
-
-				break
-			}
-		}
-	}
-
-	if !run_weapon_tick(world, game_config, zf4_data) {
-		return false
-	}
-
-	//
-	// Door Interaction
-	//
+proc_player_door_interaction :: proc(game: ^Game, zf4_data: ^zf4.Game_Tick_Func_Data) {
 	if zf4.is_key_pressed(zf4.Key_Code.E, zf4_data.input_state, zf4_data.input_state_last) {
-		player_dmg_collider := gen_player_damage_collider(world.player.pos)
+		player_dmg_collider := gen_player_damage_collider(game.player.pos)
 
-		for &building in world.buildings {
+		for &building in game.buildings {
 			if building.door_open {
 				door_solid_collider := gen_door_solid_collider(&building)
 
 				// Cancel if player is in door.
-				player_movement_collider := gen_player_movement_collider(world.player.pos)
+				player_movement_collider := gen_player_movement_collider(game.player.pos)
 
 				if zf4.do_rects_inters(player_movement_collider, door_solid_collider) {
 					continue
@@ -136,12 +77,8 @@ run_player_tick :: proc(
 				// Cancel if enemy is in door.
 				enemy_collision_found := false
 
-				for i in 0 ..< ENEMY_LIMIT {
-					if !world.enemies.activity[i] {
-						continue
-					}
-
-					enemy := &world.enemies.buf[i]
+				for i in 0 ..< game.enemy_cnt {
+					enemy := &game.enemies[i]
 
 					enemy_movement_collider := gen_enemy_movement_collider(enemy.type, enemy.pos)
 
@@ -163,15 +100,10 @@ run_player_tick :: proc(
 			}
 		}
 	}
-
-	return true
 }
 
-append_player_render_tasks :: proc(
-	tasks: ^[dynamic]World_Layered_Render_Task,
-	player: ^Player,
-) -> bool {
-	assert(player.active)
+append_player_render_tasks :: proc(tasks: ^[dynamic]Render_Task, player: ^Player) -> bool {
+	assert(!player.killed)
 
 	character_alpha: f32 = 1.0
 
@@ -182,7 +114,7 @@ append_player_render_tasks :: proc(
 	sprite_src_rects := SPRITE_SRC_RECTS
 	sort_depth := player.pos.y + (f32(sprite_src_rects[Sprite.Player].height) / 2.0)
 
-	if !append_world_render_task(
+	if !append_render_task(
 		tasks,
 		player.pos,
 		Sprite.Player,
@@ -200,33 +132,23 @@ append_player_render_tasks :: proc(
 	return true
 }
 
-spawn_player :: proc(pos: zf4.Vec_2D, world: ^World) {
-	assert(!world.player.active)
+damage_player :: proc(game: ^Game, dmg_info: Damage_Info) {
+	assert(game.player.inv_time >= 0)
 
-	world.player = {
-		active = true,
-		pos    = pos,
-		hp     = PLAYER_HP_LIMIT,
-	}
-}
-
-damage_player :: proc(world: ^World, dmg_info: Damage_Info) {
-	assert(world.player.inv_time >= 0)
-
-	if world.player.inv_time > 0 {
+	if game.player.inv_time > 0 {
 		return
 	}
 
 	assert(dmg_info.dmg > 0)
 
-	world.player.vel += dmg_info.kb
-	world.player.hp = max(world.player.hp - dmg_info.dmg, 0)
-	world.player.inv_time = PLAYER_INV_TIME_LIMIT
-	world.player.flash_time = PLAYER_DMG_FLASH_TIME
+	game.player.vel += dmg_info.kb
+	game.player.hp = max(game.player.hp - dmg_info.dmg, 0)
+	game.player.inv_time = PLAYER_INV_TIME_LIMIT
+	game.player.flash_time = PLAYER_DMG_FLASH_TIME
 
-	spawn_damage_text(world, dmg_info.dmg, world.player.pos)
+	spawn_damage_text(game, dmg_info.dmg, game.player.pos)
 
-	apply_camera_shake(&world.cam, 2.0)
+	apply_camera_shake(&game.cam, 2.0)
 }
 
 gen_player_movement_collider :: proc(player_pos: zf4.Vec_2D) -> zf4.Rect {

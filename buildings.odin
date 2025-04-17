@@ -165,11 +165,11 @@ append_building_solid_colliders :: proc(
 	return true
 }
 
-update_buildings :: proc(world: ^World) {
-	for i in 0 ..< len(world.buildings) {
-		for &building in world.buildings {
+update_building_ceilings :: proc(game: ^Game) {
+	for i in 0 ..< len(game.buildings) {
+		for &building in game.buildings {
 			// Update ceiling visibility.
-			building.ceiling_hidden = is_something_in_building(&building, world)
+			building.ceiling_hidden = is_something_in_building(&building, game)
 
 			// Update ceiling alpha.
 			ALPHA_LERP_FACTOR: f32 : 0.1
@@ -180,21 +180,12 @@ update_buildings :: proc(world: ^World) {
 	}
 }
 
-gen_building_interior_collider :: proc(building: ^Building) -> zf4.Rect {
-	return {
-		f32(building.rect.x * BUILDING_TILE_SIZE),
-		f32(building.rect.y * BUILDING_TILE_SIZE),
-		f32(building.rect.width * BUILDING_TILE_SIZE),
-		f32(building.rect.height * BUILDING_TILE_SIZE),
-	}
-}
-
-is_something_in_building :: proc(building: ^Building, world: ^World) -> bool {
+is_something_in_building :: proc(building: ^Building, game: ^Game) -> bool {
 	interior_collider := gen_building_interior_collider(building)
 
 	// Test for player collision.
-	if world.player.active {
-		player_movement_collider := gen_player_movement_collider(world.player.pos)
+	if !game.player.killed {
+		player_movement_collider := gen_player_movement_collider(game.player.pos)
 
 		if zf4.do_rects_inters(interior_collider, player_movement_collider) {
 			return true
@@ -202,12 +193,8 @@ is_something_in_building :: proc(building: ^Building, world: ^World) -> bool {
 	}
 
 	// Test for enemy collisions.
-	for i in 0 ..< ENEMY_LIMIT {
-		if world.enemies.activity[i] {
-			continue
-		}
-
-		enemy := &world.enemies.buf[i]
+	for i in 0 ..< game.enemy_cnt {
+		enemy := &game.enemies[i]
 
 		enemy_movement_collider := gen_enemy_movement_collider(enemy.type, enemy.pos)
 
@@ -219,10 +206,16 @@ is_something_in_building :: proc(building: ^Building, world: ^World) -> bool {
 	return false
 }
 
-append_building_render_tasks :: proc(
-	tasks: ^[dynamic]World_Layered_Render_Task,
-	building: ^Building,
-) -> bool {
+gen_building_interior_collider :: proc(building: ^Building) -> zf4.Rect {
+	return {
+		f32(building.rect.x * BUILDING_TILE_SIZE),
+		f32(building.rect.y * BUILDING_TILE_SIZE),
+		f32(building.rect.width * BUILDING_TILE_SIZE),
+		f32(building.rect.height * BUILDING_TILE_SIZE),
+	}
+}
+
+append_building_render_tasks :: proc(tasks: ^[dynamic]Render_Task, building: ^Building) -> bool {
 	sprite_src_rects := SPRITE_SRC_RECTS
 	assert(sprite_src_rects[Sprite.Wall].height % BUILDING_TILE_SIZE == 0)
 	wall_tile_height := sprite_src_rects[Sprite.Wall].height / BUILDING_TILE_SIZE
@@ -233,7 +226,7 @@ append_building_render_tasks :: proc(
 	for xo in 0 ..< building.rect.width {
 		pos := building_tile_to_world_pos({building.rect.x + xo, building.rect.y})
 
-		if !append_world_render_task(tasks, pos, Sprite.Wall, pos.y, origin = {0.0, 1.0}) {
+		if !append_render_task(tasks, pos, Sprite.Wall, pos.y, origin = {0.0, 1.0}) {
 			return false
 		}
 	}
@@ -254,7 +247,7 @@ append_building_render_tasks :: proc(
 			sprite = Sprite.Door_Border_Right
 		}
 
-		if !append_world_render_task(tasks, pos, sprite, pos.y, origin = {0.0, 1.0}) {
+		if !append_render_task(tasks, pos, sprite, pos.y, origin = {0.0, 1.0}) {
 			return false
 		}
 	}
@@ -265,7 +258,7 @@ append_building_render_tasks :: proc(
 			{building.rect.x + building.door_x, building.rect.y + building.rect.height},
 		)
 
-		if !append_world_render_task(
+		if !append_render_task(
 			tasks,
 			pos,
 			building.door_open ? Sprite.Door_Open : Sprite.Door_Closed,
@@ -286,7 +279,7 @@ append_building_render_tasks :: proc(
 				{building.rect.x, building.rect.y - wall_tile_height + yo},
 			)
 
-			if !append_world_render_task(
+			if !append_render_task(
 				tasks,
 				pos,
 				Sprite.Left_Ceiling_Beam,
@@ -306,7 +299,7 @@ append_building_render_tasks :: proc(
 				},
 			)
 
-			if !append_world_render_task(
+			if !append_render_task(
 				tasks,
 				pos,
 				Sprite.Right_Ceiling_Beam,
@@ -328,7 +321,7 @@ append_building_render_tasks :: proc(
 					{building.rect.x + xo, building.rect.y - wall_tile_height + yo},
 				)
 
-				if !append_world_render_task(
+				if !append_render_task(
 					tasks,
 					pos,
 					Sprite.Ceiling,
