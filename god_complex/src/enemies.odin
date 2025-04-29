@@ -99,16 +99,6 @@ proc_enemy_deaths :: proc(game: ^Game) {
 		if game.enemies[i].hp == 0 {
 			apply_camera_shake(&game.cam, 3.0)
 
-			item_drop_cnt := int(rand.float32_range(3.0, 6.0))
-
-			for j in 0 ..< item_drop_cnt {
-				drop_vel_len := rand.float32_range(1.5, 4.0)
-				drop_vel_dir := (math.TAU / f32(item_drop_cnt)) * f32(j)
-				drop_vel := zf4.calc_len_dir(drop_vel_len, drop_vel_dir)
-
-				spawn_item_drop(Item_Type.Rock, 1, game.enemies[i].pos, game, drop_vel)
-			}
-
 			game.enemy_cnt -= 1
 			game.enemies[i] = game.enemies[game.enemy_cnt]
 			i -= 1
@@ -369,14 +359,6 @@ is_valid_enemy_spawn_pos :: proc(
 ) -> bool {
 	movement_collider := gen_enemy_movement_collider(type, pos)
 
-	for &building in game.buildings {
-		interior_collider := gen_building_interior_collider(&building)
-
-		if zf4.do_rects_inters(movement_collider, interior_collider) {
-			return false
-		}
-	}
-
 	for sc in solid_colliders {
 		if zf4.do_rects_inters(movement_collider, sc) {
 			return false
@@ -398,8 +380,6 @@ damage_enemy :: proc(enemy_index: int, game: ^Game, dmg_info: Damage_Info) {
 	if enemy.type == Enemy_Type.Melee {
 		enemy.type_data.melee.attacking = true
 	}
-
-	spawn_damage_text(game, dmg_info.dmg, enemy.pos)
 
 	apply_camera_shake(&game.cam, 0.75)
 }

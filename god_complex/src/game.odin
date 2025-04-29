@@ -9,23 +9,18 @@ import "zf4"
 
 GAME_TITLE :: "Behold a Pale Horse"
 
-PROJECTILE_LIMIT :: 512
+TILE_SIZE :: 16
+TILEMAP_WIDTH :: 32
+TILEMAP_HEIGHT :: 32
 
-BREAKABLE_LIMIT :: 64
+PROJECTILE_LIMIT :: 512
 
 HITMASK_LIMIT :: 64
 
-DAMAGE_TEXT_LIMIT :: 64
-DAMAGE_TEXT_FONT :: Font.EB_Garamond_40
-DAMAGE_TEXT_SLOWDOWN_MULT :: 0.9
-DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE :: 0.2
-DAMAGE_TEXT_FADE_MULT :: 0.8
-
 Game :: struct {
 	paused:             bool,
+	tilemap:            [TILEMAP_HEIGHT][TILEMAP_WIDTH]bool,
 	player:             Player,
-	inventory:          Inventory,
-	inventory_open:     bool,
 	enemies:            [ENEMY_LIMIT]Enemy,
 	enemy_cnt:          int,
 	enemy_spawn_time:   int,
@@ -33,10 +28,6 @@ Game :: struct {
 	proj_cnt:           int,
 	hitmasks:           [HITMASK_LIMIT]Hitmask,
 	hitmask_active_cnt: int,
-	buildings:          []Building,
-	item_drops:         [ITEM_DROP_LIMIT]Item_Drop,
-	item_drop_cnt:      int,
-	dmg_texts:          [DAMAGE_TEXT_LIMIT]Damage_Text,
 	cam:                Camera,
 	cursor_render_pos:  zf4.Vec_2D,
 }
@@ -124,13 +115,6 @@ Damage_Info :: struct {
 	kb:  zf4.Vec_2D,
 }
 
-Damage_Text :: struct {
-	dmg:   int,
-	pos:   zf4.Vec_2D,
-	vel_y: f32,
-	alpha: f32,
-}
-
 Render_Task :: struct {
 	pos:        zf4.Vec_2D,
 	origin:     zf4.Vec_2D,
@@ -171,19 +155,15 @@ main :: proc() {
 init_game :: proc(zf4_data: ^zf4.Game_Init_Func_Data) -> bool {
 	game := (^Game)(zf4_data.user_mem)
 
-	game.inventory.slots[0][0].quantity = 1
+	for y in 0 ..< TILEMAP_HEIGHT {
+		for x in 0 ..< TILEMAP_WIDTH {
+			game.tilemap[y][x] = true
+		}
+	}
 
 	game.player = {
 		hp = PLAYER_HP_LIMIT,
 	}
-
-	game.buildings = gen_buildings_in_grid({2, 2}, {20, 20}, {10, 8}, {10, 8})
-
-	if game.buildings == nil {
-		return false
-	}
-
-	spawn_item_drop(Item_Type.Rock, 1, {0.0, -200.0}, game)
 
 	return true
 }
@@ -201,10 +181,6 @@ game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 
 	if game.paused {
 		return true
-	}
-
-	if zf4.is_key_pressed(zf4.Key_Code.Tab, zf4_data.input_state, zf4_data.input_state_last) {
-		game.inventory_open = !game.inventory_open
 	}
 
 	game.hitmask_active_cnt = 0
@@ -231,12 +207,6 @@ game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 		proc_player_movement(&game.player, zf4_data.input_state, solid_colliders)
 	}
 
-	proc_item_drop_movement_and_collection(game)
-
-	if !game.player.killed {
-		update_player_weapon(game, zf4_data)
-	}
-
 	if !proc_enemy_ais(game, solid_colliders) {
 		return false
 	}
@@ -257,27 +227,11 @@ game_tick :: proc(zf4_data: ^zf4.Game_Tick_Func_Data) -> bool {
 
 	if !game.player.killed {
 		proc_player_death(&game.player, &game.cam)
-		proc_player_door_interaction(game, zf4_data)
 	}
 
 	proc_enemy_deaths(game)
 
-	update_building_ceilings(game)
-
 	update_camera(game, zf4_data)
-
-	// ### Update damage text. ###
-	for &dt in game.dmg_texts {
-		// TODO: Unnecessary amount of work being done here for invisible damage text.
-
-		dt.pos.y += dt.vel_y
-		dt.vel_y *= DAMAGE_TEXT_SLOWDOWN_MULT
-
-		if abs(dt.vel_y) <= DAMAGE_TEXT_VEL_Y_MIN_FOR_FADE {
-			dt.alpha *= 0.8
-		}
-	}
-	// ######
 
 	when ODIN_DEBUG {
 		assert(game.player.pos == player_pos_cache)
@@ -299,6 +253,29 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 		zf4_data.rendering_context.display_size,
 	)
 
+	//
+	// Tilemap
+	//
+	for y in 0 ..< TILEMAP_HEIGHT {
+		for x in 0 ..< TILEMAP_WIDTH {
+			if !game.tilemap[y][x] {
+				continue
+			}
+
+			tile_rect := zf4.Rect{f32(x * TILE_SIZE), f32(y * TILE_SIZE), TILE_SIZE, TILE_SIZE}
+			zf4.render_rect(&zf4_data.rendering_context, tile_rect)
+			zf4.render_rect_outline(
+				&zf4_data.rendering_context,
+				tile_rect,
+				inside = true,
+				blend = zf4.BLACK,
+			)
+		}
+	}
+
+	//
+	//
+	//
 	render_tasks: [dynamic]Render_Task
 	render_tasks.allocator = context.temp_allocator
 
@@ -311,16 +288,6 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 	}
 
 	if !append_projectile_render_tasks(&render_tasks, game.projectiles[:game.proj_cnt]) {
-		return false
-	}
-
-	for &building in game.buildings {
-		if !append_building_render_tasks(&render_tasks, &building) {
-			return false
-		}
-	}
-
-	if !append_item_drop_render_tasks(&render_tasks, game.item_drops[:game.item_drop_cnt]) {
 		return false
 	}
 
@@ -399,21 +366,6 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 		zf4_data.textures,
 	)
 
-	// Render damage text.
-	for dt in game.dmg_texts {
-		dt_str_buf: [16]u8
-		dt_str := fmt.bprintf(dt_str_buf[:], "%d", -dt.dmg)
-
-		zf4.render_str(
-			&zf4_data.rendering_context,
-			dt_str,
-			int(DAMAGE_TEXT_FONT),
-			zf4_data.fonts,
-			camera_to_display_pos(dt.pos, &game.cam, zf4_data.rendering_context.display_size),
-			blend = {1.0, 1.0, 1.0, dt.alpha},
-		)
-	}
-
 	// Render player health bar.
 	player_hp_bar_height: f32 = 20.0
 	player_hp_bar_rect := zf4.Rect {
@@ -440,16 +392,6 @@ render_game :: proc(zf4_data: ^zf4.Game_Render_Func_Data) -> bool {
 		zf4.calc_rect_center_right(player_hp_bar_rect) + {12.0, 0.0},
 		zf4.Str_Hor_Align.Left,
 	)
-
-	if game.inventory_open {
-		render_inventory(
-			&zf4_data.rendering_context,
-			&game.inventory,
-			{32.0, 32.0},
-			zf4_data.textures,
-			zf4_data.fonts,
-		)
-	}
 
 	zf4.render_texture(
 		&zf4_data.rendering_context,
@@ -507,12 +449,6 @@ shader_prog_index_to_file_paths :: proc(index: int) -> (string, string) {
 gen_solid_colliders :: proc(game: ^Game, allocator := context.allocator) -> ([]zf4.Rect, bool) {
 	colliders: [dynamic]zf4.Rect
 	colliders.allocator = allocator
-
-	for &building in game.buildings {
-		if !append_building_solid_colliders(&colliders, &building) {
-			return colliders[:], false
-		}
-	}
 
 	return colliders[:], true
 }
@@ -820,32 +756,5 @@ proc_hitmask_collisions :: proc(game: ^Game) {
 			}
 		}
 	}
-}
-
-spawn_damage_text :: proc(
-	game: ^Game,
-	dmg: int,
-	pos: zf4.Vec_2D,
-	vel_y_range: [2]f32 = {-6.0, -4.0},
-) -> bool {
-	assert(game != nil)
-	assert(dmg > 0)
-	assert(vel_y_range[0] <= vel_y_range[1])
-	assert(vel_y_range[0] <= 0.0 && vel_y_range[1] <= 0.0)
-
-	for &dt in game.dmg_texts {
-		if dt.alpha <= 0.01 {
-			dt = {
-				dmg   = dmg,
-				pos   = pos,
-				vel_y = rand.float32_range(vel_y_range[0], vel_y_range[1]),
-				alpha = 1.0,
-			}
-
-			return true
-		}
-	}
-
-	return false
 }
 

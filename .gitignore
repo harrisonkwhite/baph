@@ -1,2 +1,4 @@
-*.exe
-*.pdb
+build/
+build.bat
+run.bat
+compile_commands.json
