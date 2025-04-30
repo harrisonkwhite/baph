@@ -105,6 +105,10 @@ void Flush(const s_rendering_context* const context);
 
 s_rect_edges CalcTextureCoords(const s_rect_i src_rect, const s_vec_2d_i tex_size);
 
+inline bool IsOriginValid(const s_vec_2d origin) {
+    return origin.x >= 0.0f && origin.y >= 0.0f && origin.x <= 1.0f && origin.y <= 1.0f;
+}
+
 inline bool IsColorValid(const s_color col) {
     return col.r >= 0.0 && col.r <= 1.0
         && col.g >= 0.0 && col.g <= 1.0

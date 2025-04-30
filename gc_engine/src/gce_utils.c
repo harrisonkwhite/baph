@@ -86,3 +86,41 @@ void AssertMemArenaValidity(const s_mem_arena* const arena) {
         assert(arena->offs >= 0 && arena->offs <= arena->size);
     }
 }
+
+int FirstActiveBitIndex(const t_byte* const bytes, const int byte_cnt) {
+    assert(bytes);
+    assert(byte_cnt > 0);
+
+    for (int i = 0; i < byte_cnt; i++) {
+        if (bytes[i] == 0xFF) {
+            continue;
+        }
+        
+        for (int j = 0; j < 8; j++) {
+            if (bytes[i] & (1 << j)) {
+                return (i * 8) + j;
+            }
+        }
+    }
+    
+    return -1;
+}
+
+int FirstInactiveBitIndex(const t_byte* const bytes, const int byte_cnt) {
+    assert(bytes);
+    assert(byte_cnt > 0);
+
+    for (int i = 0; i < byte_cnt; i++) {
+        if (bytes[i] == 0xFF) {
+            continue;
+        }
+        
+        for (int j = 0; j < 8; j++) {
+            if (!(bytes[i] & (1 << j))) {
+                return (i * 8) + j;
+            }
+        }
+    }
+    
+    return -1;
+}

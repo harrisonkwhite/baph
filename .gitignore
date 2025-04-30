@@ -1,4 +1,5 @@
 build/
+.cache/
 build.bat
 run.bat
 compile_commands.json

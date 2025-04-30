@@ -5,11 +5,12 @@
 #include <stdint.h>
 #include <assert.h>
 #include <math.h>
+#include "gce_utils.h"
 
 #define PI 3.14159265358979323846f
 
-#define MIN(X, Y) ((X) <= (Y) ? (X) : (Y))
-#define MAX(X, Y) ((X) >= (Y) ? (X) : (Y))
+#define MIN(x, y) ((x) <= (y) ? (x) : (y))
+#define MAX(x, y) ((x) >= (y) ? (x) : (y))
 
 #define VEC_2D_ZERO (s_vec_2d) {0}
 #define VEC_2D_I_ZERO (s_vec_2d_i) {0}
@@ -48,13 +49,28 @@ typedef struct {
 } s_rect_edges;
 
 typedef struct {
+    float min;
+    float max;
+} s_range_f;
+
+typedef struct {
     s_vec_2d* pts;
     int cnt;
 } s_poly;
 
+typedef struct {
+    const s_vec_2d* pts;
+    int cnt;
+} s_poly_view;
+
 s_rect GenSpanningRect(const s_rect* const rects, const int cnt);
 void InitIdenMatrix4x4(t_matrix_4x4* const mat);
 void InitOrthoMatrix4x4(t_matrix_4x4* const mat, const float left, const float right, const float bottom, const float top, const float near, const float far);
+
+bool PushQuadPoly(s_poly* const poly, s_mem_arena* const mem_arena, const s_vec_2d pos, const s_vec_2d size, const s_vec_2d origin);
+bool PushQuadPolyRotated(s_poly* const poly, s_mem_arena* const mem_arena, const s_vec_2d pos, const s_vec_2d size, const s_vec_2d origin, const float rot);
+bool DoPolysInters(const s_poly_view* const a, const s_poly_view* const b);
+bool DoesPolyIntersWithRect(const s_poly_view* const poly, const s_rect rect);
 
 inline float Lerp(const float a, const float b, const float t) {
     assert(t >= 0.0f && t <= 1.0f);

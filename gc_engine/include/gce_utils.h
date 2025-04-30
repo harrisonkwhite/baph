@@ -7,6 +7,9 @@
 #include <stdalign.h>
 #include <assert.h>
 
+#define BITS_TO_BYTES(x) ((x + 7) & ~7)
+#define BYTES_TO_BITS(x) (x * 8)
+
 typedef uint8_t t_byte;
 
 bool IsZero(const void* const mem, const int size);
@@ -52,5 +55,32 @@ inline bool IsMemArenaActive(const s_mem_arena* const arena) {
 
 #define MEM_ARENA_PUSH_TYPE(arena, type) (type*)PushToMemArena(arena, sizeof(type), alignof(type))
 #define MEM_ARENA_PUSH_TYPE_MANY(arena, type, cnt) (type*)PushToMemArena(arena, sizeof(type) * cnt, alignof(type))
+
+int FirstActiveBitIndex(const t_byte* const bytes, const int byte_cnt); // Returns -1 if an active bit is not found.
+int FirstInactiveBitIndex(const t_byte* const bytes, const int byte_cnt); // Returns -1 if an inactive bit is not found.
+
+inline bool ActivateBit(const int bit_index, t_byte* const bytes, const int bit_cnt) {
+    assert(bit_index >= 0 && bit_index < bit_cnt);
+    assert(bytes);
+    assert(bit_cnt > 0);
+
+    return bytes[bit_index / 8] |= 1 << (bit_index % 8);
+}
+
+inline bool DeactivateBit(const int bit_index, t_byte* const bytes, const int bit_cnt) {
+    assert(bit_index >= 0 && bit_index < bit_cnt);
+    assert(bytes);
+    assert(bit_cnt > 0);
+
+    return bytes[bit_index / 8] &= ~(1 << (bit_index % 8));
+}
+
+inline bool IsBitActive(const int bit_index, const t_byte* const bytes, const int bit_cnt) {
+    assert(bit_index >= 0 && bit_index < bit_cnt);
+    assert(bytes);
+    assert(bit_cnt > 0);
+
+    return bytes[bit_index / 8] & (1 << (bit_index % 8));
+}
 
 #endif

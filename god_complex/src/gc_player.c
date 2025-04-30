@@ -42,6 +42,8 @@ static float CalcPlayerAlpha(const int inv_time) {
 }
 
 bool AppendPlayerLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_player* const player) {
+    assert(tasks);
+    assert(player);
     assert(!player->killed);
 
     const float sort_depth = player->pos.y + (g_sprite_src_rects[ek_sprite_player].height / 2.0f);

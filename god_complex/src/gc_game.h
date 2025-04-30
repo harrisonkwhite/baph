@@ -5,6 +5,8 @@
 
 #define GAME_TITLE "God Complex"
 
+#define ENEMY_LIMIT 256
+
 #define CAMERA_SCALE 2.0f
 
 typedef enum {
@@ -14,6 +16,7 @@ typedef enum {
 
 typedef enum {
     ek_sprite_player,
+    ek_sprite_enemy,
     ek_sprite_cursor,
     eks_sprite_cnt
 } e_sprite;
@@ -45,6 +48,18 @@ typedef struct {
 } s_player;
 
 typedef struct {
+    s_vec_2d pos;
+    s_vec_2d vel;
+    int hp;
+    int flash_time;
+} s_enemy;
+
+typedef struct {
+    s_enemy buf[ENEMY_LIMIT];
+    t_byte activity[BITS_TO_BYTES(ENEMY_LIMIT)];
+} s_enemy_list;
+
+typedef struct {
     s_vec_2d pos_no_offs;
     s_vec_2d pos_offs;
     float shake;
@@ -53,6 +68,7 @@ typedef struct {
 typedef struct {
     s_textures textures;
     s_player player;
+    s_enemy_list enemy_list;
     s_camera camera;
 } s_game;
 
@@ -62,6 +78,11 @@ bool AppendLayeredRenderTask(s_layered_render_task_list* const list, const s_vec
 
 void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state);
 bool AppendPlayerLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_player* const player);
+
+bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list);
+bool ProcEnemyAIs(s_enemy_list* const enemy_list);
+void ProcEnemyDeaths(s_game* const game);
+bool AppendEnemyLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_enemy_list* const enemy_list);
 
 void UpdateCamera(s_game* const game, const s_game_tick_func_data* const tick_data);
 void InitCameraViewMatrix4x4(t_matrix_4x4* const mat, const s_camera* const cam, const s_vec_2d_i display_size);
