@@ -3,14 +3,14 @@ file(GLOB_RECURSE ENGINE_HEADERS CONFIGURE_DEPENDS include/*.h)
 add_library(gc_engine STATIC
   ${ENGINE_SRCS}
   ${ENGINE_HEADERS}
-  ${CMAKE_SOURCE_DIR}/external/glad/src/glad.c
-  ${CMAKE_SOURCE_DIR}/external/stb/src/stb.c
+  ${CMAKE_SOURCE_DIR}/code/external/glad/src/glad.c
+  ${CMAKE_SOURCE_DIR}/code/external/stb/src/stb.c
 )
 
 target_include_directories(gc_engine PUBLIC
   include
-  ${CMAKE_SOURCE_DIR}/external/stb/include
-  ${CMAKE_SOURCE_DIR}/external/glad/include
+  ${CMAKE_SOURCE_DIR}/code/external/stb/include
+  ${CMAKE_SOURCE_DIR}/code/external/glad/include
 )
 
 target_link_libraries(gc_engine PUBLIC glfw opengl32)

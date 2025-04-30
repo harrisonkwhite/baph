@@ -7,7 +7,7 @@
 const s_rect_i g_sprite_src_rects[eks_sprite_cnt] = {
     {8, 0, 24, 40}, // Player
     {8, 0, 24, 40}, // Enemy
-	{0, 8, 8, 8}, // Cursor
+    {0, 8, 8, 8}, // Cursor
 };
 
 bool IsLayeredRenderTaskListValid(const s_layered_render_task_list* const list) {
@@ -191,12 +191,12 @@ static void CleanGame(void* const user_mem) {
 }
 
 s_rect GenColliderRectFromSprite(const e_sprite sprite, const s_vec_2d pos, const s_vec_2d origin) {
-	return (s_rect){
-		pos.x - (g_sprite_src_rects[sprite].width * origin.x),
-		pos.y - (g_sprite_src_rects[sprite].height * origin.y),
-		g_sprite_src_rects[sprite].width,
-		g_sprite_src_rects[sprite].height
-	};
+    return (s_rect){
+        pos.x - (g_sprite_src_rects[sprite].width * origin.x),
+        pos.y - (g_sprite_src_rects[sprite].height * origin.y),
+        g_sprite_src_rects[sprite].width,
+        g_sprite_src_rects[sprite].height
+    };
 }
 
 bool PushColliderPolyFromSprite(s_poly* const poly, s_mem_arena* const mem_arena, const e_sprite sprite, const s_vec_2d pos, const s_vec_2d origin, const float rot) {

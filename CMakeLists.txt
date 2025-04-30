@@ -5,5 +5,5 @@ set(CMAKE_C_STANDARD 11)
 
 find_package(glfw3 CONFIG REQUIRED)
 
-add_subdirectory(god_complex)
-add_subdirectory(gc_engine)
+add_subdirectory(code/god_complex)
+add_subdirectory(code/gc_engine)
