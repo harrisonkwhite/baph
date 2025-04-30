@@ -240,6 +240,9 @@ bool RunGame(const s_game_info* const info) {
 
     glfwSwapInterval(1); // Enables VSync.
 
+    glfwSetWindowAttrib(glfw_window, GLFW_RESIZABLE, info->window_flags & ek_window_flag_resizable ? GLFW_TRUE : GLFW_FALSE);
+    glfwSetInputMode(glfw_window, GLFW_CURSOR, info->window_flags & ek_window_flag_hide_cursor ? GLFW_CURSOR_HIDDEN : GLFW_CURSOR_NORMAL);
+
     s_input_state input_state = {0};
 
     glfwSetWindowUserPointer(glfw_window, &input_state);

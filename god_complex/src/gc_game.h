@@ -14,6 +14,7 @@ typedef enum {
 
 typedef enum {
     ek_sprite_player,
+    ek_sprite_cursor,
     eks_sprite_cnt
 } e_sprite;
 

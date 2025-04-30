@@ -1,9 +1,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "gc_game.h"
+#include "gce_game.h"
 
 const s_rect_i g_sprite_src_rects[eks_sprite_cnt] = {
-    {8, 0, 24, 40}
+    {8, 0, 24, 40},
+	{0, 8, 8, 8}
 };
 
 bool IsLayeredRenderTaskListValid(const s_layered_render_task_list* const list) {
@@ -122,7 +124,7 @@ static bool RenderGame(const s_game_render_func_data* const func_data) {
     ZeroOut(&func_data->rendering_context.state->view_mat, sizeof(func_data->rendering_context.state->view_mat));
     InitCameraViewMatrix4x4(&func_data->rendering_context.state->view_mat, &game->camera, func_data->rendering_context.display_size);
 
-    RenderClear((s_color) { 0.2, 0.3, 0.4, 1.0 });
+    RenderClear((s_color){0.2, 0.3, 0.4, 1.0});
 
     s_layered_render_task_list render_task_list = {0};
 
@@ -134,6 +136,27 @@ static bool RenderGame(const s_game_render_func_data* const func_data) {
 
     CleanLayeredRenderTaskList(&render_task_list);
 
+    Flush(&func_data->rendering_context);
+
+    //
+    // UI
+    //
+    ZeroOut(&func_data->rendering_context.state->view_mat, sizeof(func_data->rendering_context.state->view_mat));
+    InitIdenMatrix4x4(&func_data->rendering_context.state->view_mat);
+
+    // Render cursor.
+    RenderTexture(
+        &func_data->rendering_context,
+        ek_texture_all,
+        &game->textures,
+        g_sprite_src_rects[ek_sprite_cursor],
+        func_data->input_state->mouse_pos,
+        (s_vec_2d){0.5, 0.5},
+        (s_vec_2d){1.0, 1.0},
+        0.0f,
+        WHITE
+    );
+    
     Flush(&func_data->rendering_context);
 
     return true;
@@ -149,6 +172,7 @@ int main() {
 
         .window_init_size = {1280, 720},
         .window_title = GAME_TITLE,
+        .window_flags = ek_window_flag_hide_cursor | ek_window_flag_resizable,
 
         .init_func = InitGame,
         .tick_func = GameTick,
