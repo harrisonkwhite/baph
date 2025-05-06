@@ -58,19 +58,14 @@ typedef struct {
     int cnt;
 } s_poly;
 
-typedef struct {
-    const s_vec_2d* pts;
-    int cnt;
-} s_poly_view;
-
 s_rect GenSpanningRect(const s_rect* const rects, const int cnt);
 void InitIdenMatrix4x4(t_matrix_4x4* const mat);
 void InitOrthoMatrix4x4(t_matrix_4x4* const mat, const float left, const float right, const float bottom, const float top, const float near, const float far);
 
 bool PushQuadPoly(s_poly* const poly, s_mem_arena* const mem_arena, const s_vec_2d pos, const s_vec_2d size, const s_vec_2d origin);
 bool PushQuadPolyRotated(s_poly* const poly, s_mem_arena* const mem_arena, const s_vec_2d pos, const s_vec_2d size, const s_vec_2d origin, const float rot);
-bool DoPolysInters(const s_poly_view* const a, const s_poly_view* const b);
-bool DoesPolyIntersWithRect(const s_poly_view* const poly, const s_rect rect);
+bool DoPolysInters(const s_poly* const a, const s_poly* const b);
+bool DoesPolyIntersWithRect(const s_poly* const poly, const s_rect rect);
 
 inline float Lerp(const float a, const float b, const float t) {
     assert(t >= 0.0f && t <= 1.0f);

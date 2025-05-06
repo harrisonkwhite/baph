@@ -84,7 +84,7 @@ static s_range_f ProjectPts(const s_vec_2d* const pts, const int cnt, const s_ve
     return range;
 }
 
-static bool CheckPolySep(const s_poly_view* const poly, const s_poly_view* const other) {
+static bool CheckPolySep(const s_poly* const poly, const s_poly* const other) {
     for (int i = 0; i < poly->cnt; ++i) {
         const s_vec_2d a = poly->pts[i];
         const s_vec_2d b = poly->pts[(i + 1) % poly->cnt];
@@ -152,11 +152,11 @@ bool PushQuadPolyRotated(s_poly* const poly, s_mem_arena* const mem_arena, const
     return true;
 }
 
-bool DoPolysInters(const s_poly_view* const a, const s_poly_view* const b) {
+bool DoPolysInters(const s_poly* const a, const s_poly* const b) {
     return CheckPolySep(a, b) && CheckPolySep(b, a);
 }
 
-bool DoesPolyIntersWithRect(const s_poly_view* const poly, const s_rect rect) {
+bool DoesPolyIntersWithRect(const s_poly* const poly, const s_rect rect) {
     const s_vec_2d pts[4] = {
         {rect.x, rect.y},
         {rect.x + rect.width, rect.y},
@@ -169,5 +169,5 @@ bool DoesPolyIntersWithRect(const s_poly_view* const poly, const s_rect rect) {
         .cnt = 4
     };
     
-    return DoPolysInters(poly, (const s_poly_view*)&rect_poly);
+    return DoPolysInters(poly, (const s_poly*)&rect_poly);
 }

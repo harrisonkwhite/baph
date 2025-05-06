@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "gc_game.h"
+#include "gce_math.h"
 
 bool InitLevel(s_level* const level) {
     assert(IsZero(level, sizeof(*level)));
@@ -12,10 +13,104 @@ bool InitLevel(s_level* const level) {
     return true;
 }
 
-bool LevelTick(s_game* const game, const s_game_tick_func_data* const func_data) {
+static s_damage_info GenProjectileDamageInfo(const s_projectile* const proj) {
+    return (s_damage_info){
+        .dmg = proj->dmg,
+        .kb = proj->vel
+    };
+}
+
+static bool UpdateProjectiles(s_level* const level, s_mem_arena* const temp_mem_arena) {
+    assert(level);
+    assert(temp_mem_arena && IsMemArenaValid(temp_mem_arena));
+
+    // Process projectile movement.
+    for (int i = 0; i < level->proj_cnt; i++) {
+        s_projectile* const proj = &level->projectiles[i];
+        proj->pos = Vec2DSum(proj->pos, proj->vel);
+    }
+
+    // Generate projectile colliders.
+    s_poly proj_colliders[PROJECTILE_LIMIT] = {0};
+
+    for (int i = 0; i < level->proj_cnt; i++) {
+        const s_projectile* const proj = &level->projectiles[i];
+
+        if (!PushColliderPolyFromSprite(&proj_colliders[i], temp_mem_arena, ek_sprite_projectile, proj->pos, (s_vec_2d){0.5f, 0.5f}, proj->rot)) {
+            fprintf(stderr, "Failed to generate projectile collider!\n");
+            return false;
+        }
+    }
+
+    // Handle player collision.
+    if (!level->player.killed) {
+        const s_rect player_dmg_collider = GenPlayerDamageCollider(level->player.pos);
+
+        for (int i = 0; i < level->proj_cnt; i++) {
+            const s_projectile* const proj = &level->projectiles[i];
+
+            if (!proj->from_enemy) {
+                continue;
+            }
+
+            if (DoesPolyIntersWithRect(&proj_colliders[i], player_dmg_collider)) {
+                const s_damage_info proj_dmg_info = GenProjectileDamageInfo(proj);
+                DamagePlayer(level, proj_dmg_info);
+
+                level->proj_cnt -= 1;
+                level->projectiles[i] = level->projectiles[level->proj_cnt];
+                i--;
+            }
+        }
+    }
+
+    // Handle enemy collisions.
+    {
+        s_rect enemy_dmg_colliders[ENEMY_LIMIT] = {0};
+
+        for (int i = 0; i < ENEMY_LIMIT; i++) {
+            const s_enemy* const enemy = &level->enemy_list.buf[i];
+
+            if (!IsEnemyActive(i, &level->enemy_list)) {
+                continue;
+            }
+
+            enemy_dmg_colliders[i] = GenEnemyDamageCollider(enemy->pos);
+        }
+
+        for (int i = 0; i < level->proj_cnt; i++) {
+            const s_projectile* const proj = &level->projectiles[i];
+
+            if (proj->from_enemy) {
+                continue;
+            }
+
+            for (int j = 0; j < ENEMY_LIMIT; j++) {
+                if (!IsEnemyActive(j, &level->enemy_list)) {
+                    continue;
+                }
+
+                if (DoesPolyIntersWithRect(&proj_colliders[i], enemy_dmg_colliders[j])) {
+                    const s_damage_info proj_dmg_info = GenProjectileDamageInfo(proj);
+                    DamageEnemy(level, j, proj_dmg_info);
+
+                    level->proj_cnt -= 1;
+                    level->projectiles[i] = level->projectiles[level->proj_cnt];
+                    i--;
+
+                    break;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+bool LevelTick(s_game* const game, const s_window_state* const window_state, const s_input_state* const input_state, const s_input_state* const input_state_last, s_mem_arena* const temp_mem_arena) {
     s_level* const level = &game->level;
 
-    if (IsKeyPressed(ek_key_code_escape, func_data->input_state, func_data->input_state_last)) {
+    if (IsKeyPressed(ek_key_code_escape, input_state, input_state_last)) {
         level->paused = !level->paused;
     }
 
@@ -23,10 +118,42 @@ bool LevelTick(s_game* const game, const s_game_tick_func_data* const func_data)
         return true;
     }
 
-    ProcPlayerMovement(&level->player, func_data->input_state);
+    ProcPlayerMovement(&level->player, input_state);
+
+    if (!ProcPlayerShooting(level, window_state->size, input_state, input_state_last)) {
+        return false;
+    }
+
     ProcEnemyAIs(&level->enemy_list);
+    UpdateProjectiles(level, temp_mem_arena);
     ProcEnemyDeaths(level);
-    UpdateCamera(level, func_data);
+    UpdateCamera(level, window_state, input_state);
+
+    return true;
+}
+
+static bool AppendProjectileLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_projectile* const projectiles, const int proj_cnt) {
+    assert(tasks && IsLayeredRenderTaskListValid(tasks));
+    assert(projectiles);
+    assert(proj_cnt >= 0 && proj_cnt <= PROJECTILE_LIMIT);
+
+    for (int i = 0; i < proj_cnt; i++) {
+        const s_projectile* const proj = &projectiles[i];
+
+        if (!AppendLayeredRenderTaskExt(
+            tasks,
+            proj->pos,
+            (s_vec_2d){0.5f, 0.5f},
+            (s_vec_2d){1.0f, 1.0f},
+            proj->rot,
+            1.0f,
+            ek_sprite_projectile,
+            0,
+            proj->pos.y
+        )) {
+            return false;
+        }
+    }
 
     return true;
 }
@@ -73,6 +200,10 @@ bool RenderLevel(const s_rendering_context* const rendering_context, const s_lev
     }
 
     if (!AppendEnemyLayeredRenderTasks(&render_task_list, &level->enemy_list)) {
+        return false;
+    }
+
+    if (!AppendProjectileLayeredRenderTasks(&render_task_list, level->projectiles, level->proj_cnt)) {
         return false;
     }
 
@@ -152,7 +283,7 @@ bool AppendLayeredRenderTaskExt(
         list->cap = cap_new;
     }
 
-    list->buf[list->len] = (s_layered_render_task) {
+    list->buf[list->len] = (s_layered_render_task){
         .pos = pos,
         .origin = origin,
         .scale = scale,
@@ -176,4 +307,26 @@ bool IsLayeredRenderTaskListValid(const s_layered_render_task_list* const list) 
     }
 
     return list->buf && list->cap > 0 && list->len >= 0 && list->len <= list->cap;
+}
+
+bool SpawnProjectile(s_level* const level, const s_vec_2d pos, const float spd, const float dir, const int dmg, const bool from_enemy) {
+    assert(level);
+    assert(spd > 0.0f);
+    assert(dmg > 0);
+
+    if (level->proj_cnt == PROJECTILE_LIMIT) {
+        fprintf(stderr, "Failed to spawn projectile due to insufficient space!\n");
+        return false;
+    }
+
+    level->projectiles[level->proj_cnt] = (s_projectile){
+        .pos = pos,
+        .vel = LenDir(spd, dir),
+        .rot = dir,
+        .dmg = dmg,
+        .from_enemy = from_enemy
+    };
+    level->proj_cnt++;
+
+    return true;
 }

@@ -7,6 +7,7 @@
 const s_rect_i g_sprite_src_rects[eks_sprite_cnt] = {
     {8, 0, 24, 40}, // Player
     {8, 0, 24, 40}, // Enemy
+    {64, 10, 16, 4}, // Projectile
     {0, 8, 8, 8} // Cursor
 };
 
@@ -64,7 +65,7 @@ static bool GameTick(const s_game_tick_func_data* const func_data) {
         }
     }
 
-    if (!LevelTick(game, func_data)) {
+    if (!LevelTick(game, &func_data->window_state, func_data->input_state, func_data->input_state_last, func_data->temp_mem_arena)) {
         return false;
     }
 

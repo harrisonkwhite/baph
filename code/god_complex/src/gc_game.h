@@ -7,6 +7,8 @@
 
 #define ENEMY_LIMIT 256
 
+#define PROJECTILE_LIMIT 1024
+
 #define CAMERA_SCALE 2.0f
 
 #define PAUSE_SCREEN_BG_ALPHA 0.2f
@@ -24,7 +26,9 @@ typedef enum {
 typedef enum {
     ek_sprite_player,
     ek_sprite_enemy,
+    ek_sprite_projectile,
     ek_sprite_cursor,
+
     eks_sprite_cnt
 } e_sprite;
 
@@ -67,6 +71,14 @@ typedef struct {
 } s_enemy_list;
 
 typedef struct {
+    s_vec_2d pos;
+    s_vec_2d vel;
+    float rot;
+    int dmg;
+    bool from_enemy;
+} s_projectile;
+
+typedef struct {
     s_vec_2d pos_no_offs;
     s_vec_2d pos_offs;
     float shake;
@@ -75,6 +87,8 @@ typedef struct {
 typedef struct {
     s_player player;
     s_enemy_list enemy_list;
+    s_projectile projectiles[PROJECTILE_LIMIT];
+    int proj_cnt;
     s_camera camera;
     bool paused;
 } s_level;
@@ -92,24 +106,38 @@ typedef struct {
 
 extern const s_rect_i g_sprite_src_rects[eks_sprite_cnt];
 
+s_rect GenColliderRectFromSprite(const e_sprite sprite, const s_vec_2d pos, const s_vec_2d origin);
+bool PushColliderPolyFromSprite(s_poly* const poly, s_mem_arena* const mem_arena, const e_sprite sprite, const s_vec_2d pos, const s_vec_2d origin, const float rot);
+
 bool InitLevel(s_level* const level);
-bool LevelTick(s_game* const game, const s_game_tick_func_data* const func_data);
+bool LevelTick(s_game* const game, const s_window_state* const window_state, const s_input_state* const input_state, const s_input_state* const input_state_last, s_mem_arena* const temp_mem_arena);
 bool RenderLevel(const s_rendering_context* const rendering_context, const s_level* const level, const s_textures* const textures, const s_fonts* const fonts, s_mem_arena* const temp_mem_arena);
 void CleanLayeredRenderTaskList(s_layered_render_task_list* const task_list);
 bool AppendLayeredRenderTask(s_layered_render_task_list* const list, const s_vec_2d pos, const e_sprite sprite, const float sort_depth);
 bool AppendLayeredRenderTaskExt(s_layered_render_task_list* const list, const s_vec_2d pos, const s_vec_2d origin, const s_vec_2d scale, const float rot, const float alpha, const e_sprite sprite, const int flash_time, const float sort_depth);
 bool IsLayeredRenderTaskListValid(const s_layered_render_task_list* const list);
+bool SpawnProjectile(s_level* const level, const s_vec_2d pos, const float spd, const float dir, const int dmg, const bool from_enemy);
 
 void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state);
+bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last);
 bool AppendPlayerLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_player* const player);
+s_rect GenPlayerDamageCollider(const s_vec_2d player_pos);
 void DamagePlayer(s_level* const level, const s_damage_info dmg_info);
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list);
 bool ProcEnemyAIs(s_enemy_list* const enemy_list);
 void ProcEnemyDeaths(s_level* const level);
 bool AppendEnemyLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_enemy_list* const enemy_list);
+s_rect GenEnemyDamageCollider(const s_vec_2d enemy_pos);
+void DamageEnemy(s_level* const level, const int enemy_index, const s_damage_info dmg_info);
 
-void UpdateCamera(s_level* const level, const s_game_tick_func_data* const tick_data);
+inline bool IsEnemyActive(const int index, const s_enemy_list* const enemy_list) {
+    assert(index >= 0 && index < ENEMY_LIMIT);
+    assert(enemy_list);
+    return IsBitActive(index, enemy_list->activity, ENEMY_LIMIT);
+}
+
+void UpdateCamera(s_level* const level, const s_window_state* const window_state, const s_input_state* const input_state);
 void InitCameraViewMatrix4x4(t_matrix_4x4* const mat, const s_camera* const cam, const s_vec_2d_i display_size);
 
 inline s_vec_2d CameraSize(const s_vec_2d_i display_size) {

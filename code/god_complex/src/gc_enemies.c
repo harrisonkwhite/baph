@@ -1,14 +1,9 @@
 #include <assert.h>
 #include <stdio.h>
 #include "gc_game.h"
+#include "gce_math.h"
 
-#define ENEMY_LIMIT 256
-
-static inline bool IsEnemyActive(const int enemy_index, const s_enemy_list* const list) {
-    assert(enemy_index >= 0 && enemy_index < ENEMY_LIMIT);
-    assert(list);
-    return IsBitActive(enemy_index, list->activity, ENEMY_LIMIT);
-}
+#define ENEMY_VEL_LERP_FACTOR 0.2f
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list) {
     const int enemy_index = FirstInactiveBitIndex(enemy_list->activity, sizeof(enemy_list->activity));
@@ -42,6 +37,7 @@ bool ProcEnemyAIs(s_enemy_list* const enemy_list) {
             enemy->flash_time -= 1;
         }
 
+        enemy->vel = LerpVec2D(enemy->vel, VEC_2D_ZERO, ENEMY_VEL_LERP_FACTOR);
         enemy->pos = Vec2DSum(enemy->pos, enemy->vel);
     }
 
@@ -86,4 +82,19 @@ bool AppendEnemyLayeredRenderTasks(s_layered_render_task_list* const tasks, cons
     }
     
     return true;
+}
+
+s_rect GenEnemyDamageCollider(const s_vec_2d enemy_pos) {
+    return GenColliderRectFromSprite(ek_sprite_enemy, enemy_pos, (s_vec_2d){0.5f, 0.5f});
+}
+
+void DamageEnemy(s_level* const level, const int enemy_index, const s_damage_info dmg_info) {
+    assert(level);
+    assert(enemy_index >= 0 && enemy_index < ENEMY_LIMIT);
+    assert(IsEnemyActive(enemy_index, &level->enemy_list));
+    assert(dmg_info.dmg > 0);
+
+    s_enemy* const enemy = &level->enemy_list.buf[enemy_index];
+    enemy->vel = Vec2DSum(enemy->vel, dmg_info.kb);
+    enemy->hp = MAX(enemy->hp - dmg_info.dmg, 0);
 }

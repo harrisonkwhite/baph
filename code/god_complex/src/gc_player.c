@@ -33,6 +33,19 @@ void ProcPlayerMovement(s_player* const player, const s_input_state* const input
     player->pos.y += player->vel.y;
 }
 
+bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last) {
+    if (IsMouseButtonPressed(ek_mouse_button_code_left, input_state, input_state_last)) {
+        const s_vec_2d mouse_cam_pos = DisplayToCameraPos(input_state->mouse_pos, &level->camera, display_size);
+        const float shoot_dir = Dir(Vec2DDiff(mouse_cam_pos, level->player.pos));
+
+        if (!SpawnProjectile(level, level->player.pos, 12.0f, shoot_dir, 4, false)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static float CalcPlayerAlpha(const int inv_time) {
     assert(inv_time >= 0);
 
@@ -50,17 +63,6 @@ bool AppendPlayerLayeredRenderTasks(s_layered_render_task_list* const tasks, con
 
     const float sort_depth = player->pos.y + (g_sprite_src_rects[ek_sprite_player].height / 2.0f);
 
-    /*if (!AppendLayeredRenderTask(
-        tasks,
-        player->pos,
-        ek_sprite_player,
-        sort_depth,
-        CalcPlayerAlpha(player->inv_time),
-        flash_time = player.flash_time,
-    )) {
-        return false
-    }*/
-
     if (!AppendLayeredRenderTask(tasks, player->pos, ek_sprite_player, sort_depth)) {
         return false;
     }
@@ -68,12 +70,16 @@ bool AppendPlayerLayeredRenderTasks(s_layered_render_task_list* const tasks, con
     return true;
 }
 
+s_rect GenPlayerDamageCollider(const s_vec_2d player_pos) {
+    return GenColliderRectFromSprite(ek_sprite_player, player_pos, (s_vec_2d){0.5f, 0.5f});
+}
+
 void DamagePlayer(s_level* const level, const s_damage_info dmg_info) {
+    assert(dmg_info.dmg > 0);
+
     if (level->player.inv_time > 0) {
         return;
     }
-
-    assert(dmg_info.dmg > 0);
 
     level->player.vel = Vec2DSum(level->player.vel, dmg_info.kb);
     level->player.hp = MAX(level->player.hp - dmg_info.dmg, 0);

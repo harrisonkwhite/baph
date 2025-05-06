@@ -11,15 +11,11 @@ static s_vec_2d CalcCameraShakeOffs(const float shake) {
     return (s_vec_2d) { 0 }; // TEMP
 }
 
-void UpdateCamera(s_level* const level, const s_game_tick_func_data* const tick_data) {
+void UpdateCamera(s_level* const level, const s_window_state* const window_state, const s_input_state* const input_state) {
     s_vec_2d dest = level->camera.pos_no_offs;
 
     if (!level->player.killed) {
-        const s_vec_2d mouse_cam_pos = DisplayToCameraPos(
-            tick_data->input_state->mouse_pos,
-            &level->camera,
-            tick_data->window_state.size
-        );
+        const s_vec_2d mouse_cam_pos = DisplayToCameraPos(input_state->mouse_pos, &level->camera, window_state->size);
         const float player_to_mouse_cam_pos_dist = Dist(level->player.pos, mouse_cam_pos);
         const s_vec_2d player_to_mouse_cam_pos_dir = NormalOrZero(Vec2DDiff(mouse_cam_pos, level->player.pos));
 
