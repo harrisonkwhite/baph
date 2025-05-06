@@ -73,27 +73,43 @@ typedef struct {
 } s_camera;
 
 typedef struct {
-    s_textures textures;
-    s_fonts fonts;
     s_player player;
     s_enemy_list enemy_list;
     s_camera camera;
     bool paused;
+} s_level;
+
+typedef struct {
+    s_textures textures;
+    s_fonts fonts;
+    s_level level;
 } s_game;
+
+typedef struct {
+    int dmg;
+    s_vec_2d kb;
+} s_damage_info;
 
 extern const s_rect_i g_sprite_src_rects[eks_sprite_cnt];
 
+bool InitLevel(s_level* const level);
+bool LevelTick(s_game* const game, const s_game_tick_func_data* const func_data);
+bool RenderLevel(const s_rendering_context* const rendering_context, const s_level* const level, const s_textures* const textures, const s_fonts* const fonts, s_mem_arena* const temp_mem_arena);
+void CleanLayeredRenderTaskList(s_layered_render_task_list* const task_list);
 bool AppendLayeredRenderTask(s_layered_render_task_list* const list, const s_vec_2d pos, const e_sprite sprite, const float sort_depth);
+bool AppendLayeredRenderTaskExt(s_layered_render_task_list* const list, const s_vec_2d pos, const s_vec_2d origin, const s_vec_2d scale, const float rot, const float alpha, const e_sprite sprite, const int flash_time, const float sort_depth);
+bool IsLayeredRenderTaskListValid(const s_layered_render_task_list* const list);
 
 void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state);
 bool AppendPlayerLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_player* const player);
+void DamagePlayer(s_level* const level, const s_damage_info dmg_info);
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list);
 bool ProcEnemyAIs(s_enemy_list* const enemy_list);
-void ProcEnemyDeaths(s_game* const game);
+void ProcEnemyDeaths(s_level* const level);
 bool AppendEnemyLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_enemy_list* const enemy_list);
 
-void UpdateCamera(s_game* const game, const s_game_tick_func_data* const tick_data);
+void UpdateCamera(s_level* const level, const s_game_tick_func_data* const tick_data);
 void InitCameraViewMatrix4x4(t_matrix_4x4* const mat, const s_camera* const cam, const s_vec_2d_i display_size);
 
 inline s_vec_2d CameraSize(const s_vec_2d_i display_size) {

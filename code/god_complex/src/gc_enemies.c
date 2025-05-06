@@ -31,40 +31,40 @@ bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list) {
 bool ProcEnemyAIs(s_enemy_list* const enemy_list) {
     assert(enemy_list);
     
-	for (int i = 0; i < ENEMY_LIMIT; i++) {
+    for (int i = 0; i < ENEMY_LIMIT; i++) {
         if (!IsEnemyActive(i, enemy_list)) {
             continue;
         }
-	    
+        
         s_enemy* const enemy = &enemy_list->buf[i];
 
-		if (enemy->flash_time > 0) {
-			enemy->flash_time -= 1;
-		}
+        if (enemy->flash_time > 0) {
+            enemy->flash_time -= 1;
+        }
 
-		enemy->pos = Vec2DSum(enemy->pos, enemy->vel);
-	}
+        enemy->pos = Vec2DSum(enemy->pos, enemy->vel);
+    }
 
-	return true;
+    return true;
 }
 
-void ProcEnemyDeaths(s_game* const game) {
-    assert(game);
+void ProcEnemyDeaths(s_level* const level) {
+    assert(level);
     
     for (int i = 0; i < ENEMY_LIMIT; i++) {
-        if (!IsEnemyActive(i, &game->enemy_list)) {
+        if (!IsEnemyActive(i, &level->enemy_list)) {
             continue;
         }
 
-        s_enemy* const enemy = &game->enemy_list.buf[i];
+        s_enemy* const enemy = &level->enemy_list.buf[i];
 
-		assert(enemy->hp >= 0);
+        assert(enemy->hp >= 0);
 
-		if (enemy->hp == 0) {
-		    DeactivateBit(i, game->enemy_list.activity, ENEMY_LIMIT);
-		    ZeroOut(enemy, sizeof(*enemy));
-		}
-	}
+        if (enemy->hp == 0) {
+            DeactivateBit(i, level->enemy_list.activity, ENEMY_LIMIT);
+            ZeroOut(enemy, sizeof(*enemy));
+        }
+    }
 }
 
 bool AppendEnemyLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_enemy_list* const enemy_list) {

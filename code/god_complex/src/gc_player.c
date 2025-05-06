@@ -2,6 +2,8 @@
 
 #define PLAYER_MOVE_SPD 2.0f
 #define PLAYER_VEL_LERP_FACTOR 0.2f
+#define PLAYER_INV_TIME_LIMIT 20
+#define PLAYER_DMG_FLASH_TIME 10
 
 static s_vec_2d CalcPlayerMoveDir(const s_input_state* const input_state) {
     assert(input_state);
@@ -64,4 +66,17 @@ bool AppendPlayerLayeredRenderTasks(s_layered_render_task_list* const tasks, con
     }
 
     return true;
+}
+
+void DamagePlayer(s_level* const level, const s_damage_info dmg_info) {
+    if (level->player.inv_time > 0) {
+        return;
+    }
+
+    assert(dmg_info.dmg > 0);
+
+    level->player.vel = Vec2DSum(level->player.vel, dmg_info.kb);
+    level->player.hp = MAX(level->player.hp - dmg_info.dmg, 0);
+    level->player.inv_time = PLAYER_INV_TIME_LIMIT;
+    level->player.flash_time = PLAYER_DMG_FLASH_TIME;
 }

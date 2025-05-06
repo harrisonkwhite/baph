@@ -89,17 +89,7 @@ typedef struct {
     int cnt;
 } s_fonts;
 
-typedef struct {
-    s_font_arrangement_info* arrangement_infos;
-    t_gl_id* tex_gl_ids;
-    int* tex_heights;
-    int cnt;
-} s_fonts_view;
-
-static_assert(sizeof(s_fonts) == sizeof(s_fonts_view), "View struct does not have the same size as the struct it's based on!");
-// TODO: See if we can use a macro to auto-generate view structs.
-
-inline bool IsFontsValid(const s_fonts_view* const fonts) {
+inline bool IsFontsValid(const s_fonts* const fonts) {
     assert(fonts);
     return IsZero(fonts, sizeof(*fonts))
         || (fonts->cnt > 0 && fonts->arrangement_infos && fonts->tex_gl_ids && fonts->tex_heights);
@@ -167,7 +157,7 @@ void RenderClear(const s_color col);
 
 void Render(const s_rendering_context* const context, const t_gl_id tex_gl_id, const s_rect_edges tex_coords, const s_vec_2d pos, const s_vec_2d size, const s_vec_2d origin, const float rot, const s_color blend);
 void RenderTexture(const s_rendering_context* const context, const int tex_index, const s_textures* const textures, const s_rect_i src_rect, const s_vec_2d pos, const s_vec_2d origin, const s_vec_2d scale, const float rot, const s_color blend);
-bool RenderStr(const s_rendering_context* const rendering_context, const char* const str, const int font_index, const s_fonts_view* const fonts, const s_vec_2d pos, const e_str_hor_align hor_align, const e_str_ver_align ver_align, const s_color blend, s_mem_arena* const temp_mem_arena);
+bool RenderStr(const s_rendering_context* const rendering_context, const char* const str, const int font_index, const s_fonts* const fonts, const s_vec_2d pos, const e_str_hor_align hor_align, const e_str_ver_align ver_align, const s_color blend, s_mem_arena* const temp_mem_arena);
 void RenderRect(const s_rendering_context* const context, const s_rect rect, const s_color blend);
 void RenderRectOutline(const s_rendering_context* const context, const s_rect rect, const s_color blend, const float thickness);
 void RenderLine(const s_rendering_context* const context, const s_vec_2d a, const s_vec_2d b, const s_color blend, const float width);
@@ -182,7 +172,7 @@ const s_vec_2d* PushStrChrPositions(
     const char* const str,
     s_mem_arena* const mem_arena,
     const int font_index,
-    const s_fonts_view* const fonts,
+    const s_fonts* const fonts,
     const s_vec_2d pos,
     const e_str_hor_align hor_align,
     const e_str_ver_align ver_align
@@ -192,7 +182,7 @@ bool LoadStrCollider(
     s_rect* const rect,
     const char* const str,
     const int font_index,
-    const s_fonts_view* const fonts,
+    const s_fonts* const fonts,
     const s_vec_2d pos,
     const e_str_hor_align hor_align,
     const e_str_ver_align ver_align,
