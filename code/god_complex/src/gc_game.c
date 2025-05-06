@@ -56,6 +56,14 @@ static bool InitGame(const s_game_init_func_data* const func_data) {
 static bool GameTick(const s_game_tick_func_data* const func_data) {
     s_game* const game = func_data->user_mem;
 
+    if (IsKeyPressed(ek_key_code_r, func_data->input_state, func_data->input_state_last)) {
+        ZeroOut(&game->level, sizeof(game->level));
+
+        if (!InitLevel(&game->level)) {
+            return false;
+        }
+    }
+
     if (!LevelTick(game, func_data)) {
         return false;
     }

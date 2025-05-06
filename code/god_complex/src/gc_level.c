@@ -3,6 +3,8 @@
 #include "gc_game.h"
 
 bool InitLevel(s_level* const level) {
+    assert(IsZero(level, sizeof(*level)));
+
     if (!SpawnEnemy((s_vec_2d){32.0f, 32.0f}, &level->enemy_list)) {
         return false;
     }

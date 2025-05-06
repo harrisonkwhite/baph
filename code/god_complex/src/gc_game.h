@@ -114,14 +114,14 @@ void InitCameraViewMatrix4x4(t_matrix_4x4* const mat, const s_camera* const cam,
 
 inline s_vec_2d CameraSize(const s_vec_2d_i display_size) {
     assert(display_size.x > 0 && display_size.y > 0);
-    return (s_vec_2d) { display_size.x / CAMERA_SCALE, display_size.y / CAMERA_SCALE };
+    return (s_vec_2d){ display_size.x / CAMERA_SCALE, display_size.y / CAMERA_SCALE};
 }
 
 inline s_vec_2d CameraTopLeft(const s_camera* const cam, const s_vec_2d_i display_size) {
     assert(display_size.x > 0 && display_size.y > 0);
     const s_vec_2d pos = {cam->pos_no_offs.x + cam->pos_offs.x, cam->pos_no_offs.y + cam->pos_offs.y};
     const s_vec_2d size = CameraSize(display_size);
-    return (s_vec_2d) { pos.x - (size.x / 2.0f), pos.y - (size.y / 2.0f) };
+    return (s_vec_2d){ pos.x - (size.x / 2.0f), pos.y - (size.y / 2.0f)};
 }
 
 inline s_vec_2d CameraToDisplayPos(const s_vec_2d pos, const s_camera* const cam, const s_vec_2d_i display_size) {
