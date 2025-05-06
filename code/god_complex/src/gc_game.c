@@ -7,7 +7,7 @@
 const s_rect_i g_sprite_src_rects[eks_sprite_cnt] = {
     {8, 0, 24, 40}, // Player
     {8, 0, 24, 40}, // Enemy
-    {0, 8, 8, 8}, // Cursor
+    {0, 8, 8, 8} // Cursor
 };
 
 bool IsLayeredRenderTaskListValid(const s_layered_render_task_list* const list) {
@@ -82,11 +82,29 @@ static const char* TextureIndexToFilePath(const int index) {
     }
 }
 
+static s_font_load_info FontIndexToLoadInfo(const int index) {
+    switch (index) {
+        case ek_font_eb_garamond_64:
+            return (s_font_load_info) {
+                .file_path = "assets/fonts/eb_garamond.ttf",
+                .height = 64
+            };
+
+        default:
+            return (s_font_load_info){0};
+    }
+}
+
 static bool InitGame(const s_game_init_func_data* const func_data) {
     s_game* const game = func_data->user_mem;
 
     if (!LoadTexturesFromFiles(&game->textures, func_data->perm_mem_arena, eks_texture_cnt, TextureIndexToFilePath)) {
         fprintf(stderr, "Failed to load game textures!\n");
+        return false;
+    }
+
+    if (!LoadFontsFromFiles(&game->fonts, func_data->perm_mem_arena, eks_font_cnt, FontIndexToLoadInfo, func_data->temp_mem_arena)) {
+        fprintf(stderr, "Failed to load game fonts!\n");
         return false;
     }
 
@@ -99,10 +117,20 @@ static bool InitGame(const s_game_init_func_data* const func_data) {
 
 static bool GameTick(const s_game_tick_func_data* const func_data) {
     s_game* const game = func_data->user_mem;
+    
+    if (IsKeyPressed(ek_key_code_escape, func_data->input_state, func_data->input_state_last)) {
+            game->paused = !game->paused;
+    }
+
+    if (game->paused) {
+        return true;
+    }
+
     ProcPlayerMovement(&game->player, func_data->input_state);
     ProcEnemyAIs(&game->enemy_list);
     ProcEnemyDeaths(game);
     UpdateCamera(game, func_data);
+
     return true;
 }
 
@@ -119,9 +147,7 @@ static void RenderLayeredRenderTasks(const s_rendering_context* const rendering_
             task->origin,
             task->scale,
             task->rot,
-            (s_color) {
-                1.0, 1.0, 1.0, task->alpha
-            }
+            (s_color) {1.0, 1.0, 1.0, task->alpha}
         );
     }
 }
@@ -169,6 +195,12 @@ static bool RenderGame(const s_game_render_func_data* const func_data) {
     ZeroOut(&func_data->rendering_context.state->view_mat, sizeof(func_data->rendering_context.state->view_mat));
     InitIdenMatrix4x4(&func_data->rendering_context.state->view_mat);
 
+    // Render pause screen.
+    if (game->paused) {
+        RenderRect(&func_data->rendering_context, (s_rect){0, 0, func_data->rendering_context.display_size.x, func_data->rendering_context.display_size.y}, (s_color){0.0f, 0.0f, 0.0f, PAUSE_SCREEN_BG_ALPHA});
+        RenderStr(&func_data->rendering_context, "Paused", ek_font_eb_garamond_64, (const s_fonts_view*)&game->fonts, (s_vec_2d){func_data->rendering_context.display_size.x / 2.0f, func_data->rendering_context.display_size.y / 2.0f}, ek_str_hor_align_center, ek_str_ver_align_center, WHITE, func_data->temp_mem_arena);
+    }
+
     // Render cursor.
     RenderTexture(
         &func_data->rendering_context,
@@ -203,9 +235,9 @@ bool PushColliderPolyFromSprite(s_poly* const poly, s_mem_arena* const mem_arena
     assert(poly);
     assert(IsZero(poly, sizeof(*poly)));
     assert(mem_arena);
-    assert(IsMemArenaActive(mem_arena));
+    assert(IsMemArenaValid(mem_arena));
     assert(IsOriginValid(origin));
-    
+
     return PushQuadPolyRotated(poly, mem_arena, pos, (s_vec_2d){g_sprite_src_rects[sprite].width, g_sprite_src_rects[sprite].height}, origin, rot);
 }
 

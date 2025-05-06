@@ -41,17 +41,17 @@ typedef struct {
     int offs;
 } s_mem_arena;
 
+inline bool IsMemArenaValid(const s_mem_arena* const arena) {
+    assert(arena);
+    return IsZero(arena, sizeof(*arena))
+        || (arena->buf && arena->size > 0 && arena->offs >= 0 && arena->offs <= arena->size);
+}
+
 bool InitMemArena(s_mem_arena* const arena, const int size);
 void CleanMemArena(s_mem_arena* const arena);
 void* PushToMemArena(s_mem_arena* const arena, const int size, const int alignment);
 void ResetMemArena(s_mem_arena* const arena);
 void AssertMemArenaValidity(const s_mem_arena* const arena);
-
-inline bool IsMemArenaActive(const s_mem_arena* const arena) {
-    assert(arena);
-    AssertMemArenaValidity(arena);
-    return arena->buf;
-}
 
 #define MEM_ARENA_PUSH_TYPE(arena, type) (type*)PushToMemArena(arena, sizeof(type), alignof(type))
 #define MEM_ARENA_PUSH_TYPE_MANY(arena, type, cnt) (type*)PushToMemArena(arena, sizeof(type) * cnt, alignof(type))
@@ -82,5 +82,7 @@ inline bool IsBitActive(const int bit_index, const t_byte* const bytes, const in
 
     return bytes[bit_index / 8] & (1 << (bit_index % 8));
 }
+
+t_byte* PushEntireFileContents(const char* const file_path, s_mem_arena* const mem_arena);
 
 #endif

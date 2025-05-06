@@ -1,7 +1,8 @@
+#include "gce_utils.h"
 #include <stdlib.h>
-#include <assert.h>
 #include <math.h>
 #include <stb_image.h>
+#include <stb_truetype.h>
 #include <gce_rendering.h>
 
 static uint32_t CreateShaderFromSrc(const char* const src, const bool frag) {
@@ -62,7 +63,7 @@ void InitPersRenderData(s_pers_render_data* const render_data, const s_vec_2d_i 
     glGenTextures(1, &render_data->px_tex_gl_id);
     glBindTexture(GL_TEXTURE_2D, render_data->px_tex_gl_id);
 
-    t_byte px_data[TEXTURE_CHANNEL_CNT] = {255, 255, 255, 255};
+    const t_byte px_data[TEXTURE_CHANNEL_CNT] = {255, 255, 255, 255};
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px_data);
 }
 
@@ -231,17 +232,179 @@ void UnloadTextures(s_textures* const textures) {
     ZeroOut(textures, sizeof(*textures));
 }
 
+bool LoadFontsFromFiles(s_fonts* const fonts, s_mem_arena* const mem_arena, const int font_cnt, const t_font_index_to_load_info font_index_to_load_info, s_mem_arena* const temp_mem_arena) {
+    assert(fonts);
+    assert(IsZero(fonts, sizeof(*fonts)));
+    assert(mem_arena);
+    assert(font_cnt > 0);
+    assert(font_index_to_load_info);
+
+    fonts->arrangement_infos = MEM_ARENA_PUSH_TYPE_MANY(mem_arena, s_font_arrangement_info, font_cnt);
+
+    if (!fonts->arrangement_infos) {
+        return false;
+    }
+
+    fonts->tex_gl_ids = MEM_ARENA_PUSH_TYPE_MANY(mem_arena, t_gl_id, font_cnt);
+
+    if (!fonts->tex_gl_ids) {
+        return false;
+    }
+
+    fonts->tex_heights = MEM_ARENA_PUSH_TYPE_MANY(mem_arena, int, font_cnt);
+
+    if (!fonts->tex_heights) {
+        return false;
+    }
+
+    t_byte* const px_data_scratch_space = MEM_ARENA_PUSH_TYPE_MANY(temp_mem_arena, t_byte, TEXTURE_CHANNEL_CNT * FONT_TEXTURE_WIDTH * FONT_TEXTURE_HEIGHT_LIMIT);
+
+    if (!px_data_scratch_space) {
+        return false;
+    }
+
+    glGenTextures(font_cnt, fonts->tex_gl_ids);
+
+    for (int i = 0; i < font_cnt; ++i) {
+        const s_font_load_info load_info = font_index_to_load_info(i);
+
+        assert(load_info.height > 0);
+        assert(load_info.file_path);
+
+        const t_byte* const font_file_data = PushEntireFileContents(load_info.file_path, temp_mem_arena);
+
+        if (!font_file_data) {
+            return false;
+        }
+
+        stbtt_fontinfo font_info;
+
+        const int offs = stbtt_GetFontOffsetForIndex(font_file_data, 0);
+
+        if (offs == -1) {
+            fprintf(stderr, "Failed to get font offset for font \"%s\"!\n", load_info.file_path);
+            return false;
+        }
+
+        if (!stbtt_InitFont(&font_info, font_file_data, offs)) {
+            fprintf(stderr, "Failed to initialise font \"%s\"!\n", load_info.file_path);
+            return false;
+        }
+
+        const float scale = stbtt_ScaleForPixelHeight(&font_info, (float)load_info.height);
+
+        int ascent, descent, line_gap;
+        stbtt_GetFontVMetrics(&font_info, &ascent, &descent, &line_gap);
+
+        fonts->arrangement_infos[i].line_height = (int)((ascent - descent + line_gap) * scale);
+
+        for (int y = 0; y < FONT_TEXTURE_HEIGHT_LIMIT; ++y) {
+            for (int x = 0; x < FONT_TEXTURE_WIDTH; ++x) {
+                const int px_index = ((y * FONT_TEXTURE_WIDTH) + x) * TEXTURE_CHANNEL_CNT;
+
+                px_data_scratch_space[px_index + 0] = 255;
+                px_data_scratch_space[px_index + 1] = 255;
+                px_data_scratch_space[px_index + 2] = 255;
+                px_data_scratch_space[px_index + 3] = 0;
+            }
+        }
+
+        s_vec_2d_i chr_render_pos = {0, 0};
+
+        for (int j = 0; j < FONT_CHR_RANGE_LEN; ++j) {
+            const int chr = FONT_CHR_RANGE_BEGIN + j;
+
+            int advance;
+            stbtt_GetCodepointHMetrics(&font_info, chr, &advance, NULL);
+
+            fonts->arrangement_infos[i].chr_hor_advances[j] = (int)(advance * scale);
+
+            if (chr == ' ') {
+                continue;
+            }
+
+            s_vec_2d_i bitmap_size, bitmap_offs;
+            t_byte* const bitmap = stbtt_GetCodepointBitmap(&font_info, 0.0f, scale, chr, &bitmap_size.x, &bitmap_size.y, &bitmap_offs.x, &bitmap_offs.y);
+
+            if (!bitmap) {
+                return false;
+            }
+
+            fonts->arrangement_infos[i].chr_hor_offsets[j] = bitmap_offs.x;
+            fonts->arrangement_infos[i].chr_ver_offsets[j] = bitmap_offs.y + (int)(ascent * scale);
+
+            if (chr_render_pos.x + bitmap_size.x > FONT_TEXTURE_WIDTH) {
+                chr_render_pos.x = 0;
+                chr_render_pos.y += fonts->arrangement_infos[i].line_height;
+            }
+
+            const int chr_tex_height = chr_render_pos.y + bitmap_size.y;
+            if (chr_tex_height > FONT_TEXTURE_HEIGHT_LIMIT) {
+                stbtt_FreeBitmap(bitmap, NULL);
+                return false;
+            }
+
+            fonts->tex_heights[i] = MAX(fonts->tex_heights[i], chr_tex_height);
+
+            fonts->arrangement_infos[i].chr_src_rects[j] = (s_rect_i){
+                .x = chr_render_pos.x,
+                .y = chr_render_pos.y,
+                .width = bitmap_size.x,
+                .height = bitmap_size.y
+            };
+
+            for (int y = 0; y < bitmap_size.y; ++y) {
+                for (int x = 0; x < bitmap_size.x; ++x) {
+                    const int px = chr_render_pos.x + x;
+                    const int py = chr_render_pos.y + y;
+                    const int px_index = (py * FONT_TEXTURE_WIDTH + px) * TEXTURE_CHANNEL_CNT;
+                    const int bitmap_index = y * bitmap_size.x + x;
+
+                    px_data_scratch_space[px_index + 3] = bitmap[bitmap_index];
+                }
+            }
+
+            chr_render_pos.x += bitmap_size.x;
+
+            stbtt_FreeBitmap(bitmap, NULL);
+        }
+
+        glBindTexture(GL_TEXTURE_2D, fonts->tex_gl_ids[i]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA,
+            FONT_TEXTURE_WIDTH,
+            fonts->tex_heights[i],
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            px_data_scratch_space
+        );
+    }
+
+    fonts->cnt = font_cnt;
+
+    return true;
+}
+
 void BeginRendering(s_rendering_state* const state) {
+    assert(state);
     ZeroOut(state, sizeof(*state));
     InitIdenMatrix4x4(&state->view_mat);
 }
 
 void RenderClear(const s_color col) {
+    assert(IsColorValid(col));
+
     glClearColor(col.r, col.g, col.b, col.a);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
 void Render(const s_rendering_context* const context, const uint32_t tex_gl_id, const s_rect_edges tex_coords, const s_vec_2d pos, const s_vec_2d size, const s_vec_2d origin, const float rot, const s_color blend) {
+    assert(IsOriginValid(origin));
     assert(IsColorValid(blend));
 
     s_rendering_state* const state = context->state;
@@ -318,6 +481,7 @@ void Render(const s_rendering_context* const context, const uint32_t tex_gl_id, 
 
 void RenderTexture(const s_rendering_context* const context, const int tex_index, const s_textures* const textures, const s_rect_i src_rect, const s_vec_2d pos, const s_vec_2d origin, const s_vec_2d scale, const float rot, const s_color blend) {
     assert(tex_index >= 0 && tex_index < textures->cnt);
+    assert(IsOriginValid(origin));
     assert(IsColorValid(blend));
 
     const s_vec_2d_i tex_size = textures->sizes[tex_index];
@@ -328,6 +492,66 @@ void RenderTexture(const s_rendering_context* const context, const int tex_index
     Render(context, textures->gl_ids[tex_index], tex_coords, pos, size_scaled, origin, rot, blend);
 }
 
+bool RenderStr(
+    const s_rendering_context* const rendering_context,
+    const char* const str,
+    const int font_index,
+    const s_fonts_view* const fonts,
+    const s_vec_2d pos,
+    const e_str_hor_align hor_align,
+    const e_str_ver_align ver_align,
+    const s_color blend,
+    s_mem_arena* const temp_mem_arena
+) {
+    assert(rendering_context);
+    assert(str);
+    assert(fonts);
+    assert(IsColorValid(blend));
+
+    if (!str[0]) {
+        return true;
+    }
+
+    const int str_len = strlen(str);
+    const s_vec_2d* const str_chr_positions = PushStrChrPositions(str, temp_mem_arena, font_index, fonts, pos, hor_align, ver_align);
+
+    if (!str_chr_positions) {
+        return false;
+    }
+
+    const t_gl_id font_tex_gl_id = fonts->tex_gl_ids[font_index];
+
+    const s_vec_2d_i font_tex_size = {
+        .x = FONT_TEXTURE_WIDTH,
+        .y = fonts->tex_heights[font_index]
+    };
+
+    for (int i = 0; i < str_len; ++i) {
+        const char c = str[i];
+
+        if (c == '\0' || c == ' ') {
+            continue;
+        }
+
+        const int chr_index = c - FONT_CHR_RANGE_BEGIN;
+        const s_rect_i chr_src_rect = fonts->arrangement_infos[font_index].chr_src_rects[chr_index];
+        const s_rect_edges chr_tex_coords = CalcTextureCoords(chr_src_rect, font_tex_size);
+
+        Render(
+            rendering_context,
+            font_tex_gl_id,
+            chr_tex_coords,
+            str_chr_positions[i],
+            (s_vec_2d){chr_src_rect.width, chr_src_rect.height},
+            VEC_2D_ZERO,
+            0.0f,
+            blend
+        );
+    }
+
+    return true;
+}
+ 
 void RenderRect(const s_rendering_context* const context, const s_rect rect, const s_color blend) {
     assert(rect.width > 0.0f && rect.height > 0.0f);
     assert(IsColorValid(blend));
@@ -434,6 +658,171 @@ void Flush(const s_rendering_context* const context) {
 
     context->state->batch_slots_used_cnt = 0;
     context->state->batch_tex_gl_id = 0;
+}
+
+static void ApplyHorAlignOffsToLine(
+    s_vec_2d* const line_chr_positions,
+    const int count,
+    const e_str_hor_align hor_align,
+    const float line_end_x
+) {
+    assert(line_chr_positions);
+    assert(count > 0);
+
+    const float line_width = line_end_x - line_chr_positions[0].x;
+    const float align_offs = -(line_width * (float)hor_align * 0.5f);
+
+    for (int i = 0; i < count; ++i) {
+        line_chr_positions[i].x += align_offs;
+    }
+}
+
+const s_vec_2d* PushStrChrPositions(
+    const char* const str,
+    s_mem_arena* const mem_arena,
+    const int font_index,
+    const s_fonts_view* const fonts,
+    const s_vec_2d pos,
+    const e_str_hor_align hor_align,
+    const e_str_ver_align ver_align
+) {
+    assert(str);
+    assert(mem_arena);
+    assert(font_index >= 0 && font_index < fonts->cnt);
+    assert(fonts);
+    assert(IsFontsValid(fonts));
+
+    const int str_len = (int)strlen(str);
+    assert(str_len > 0);
+
+    s_vec_2d* const chr_positions = MEM_ARENA_PUSH_TYPE_MANY(mem_arena, s_vec_2d, str_len);
+
+    if (!chr_positions) {
+        return NULL;
+    }
+
+    const s_font_arrangement_info* const font_ai = &fonts->arrangement_infos[font_index];
+
+    int cur_line_begin_chr_index = 0;
+    s_vec_2d chr_base_pos_pen = VEC_2D_ZERO;
+
+    for (int i = 0; i < str_len; ++i) {
+        const char chr = str[i];
+
+        if (chr == '\0') {
+            continue;
+        }
+
+        if (chr == '\n') {
+            const int line_count = i - cur_line_begin_chr_index;
+            ApplyHorAlignOffsToLine(
+                &chr_positions[cur_line_begin_chr_index],
+                line_count,
+                hor_align,
+                chr_base_pos_pen.x + pos.x
+            );
+
+            cur_line_begin_chr_index = i + 1;
+            chr_base_pos_pen.x = 0.0f;
+            chr_base_pos_pen.y += (float)font_ai->line_height;
+            continue;
+        }
+
+        const int chr_index = chr - FONT_CHR_RANGE_BEGIN;
+
+        chr_positions[i].x = chr_base_pos_pen.x + pos.x + (float)font_ai->chr_hor_offsets[chr_index];
+        chr_positions[i].y = chr_base_pos_pen.y + pos.y + (float)font_ai->chr_ver_offsets[chr_index];
+
+        chr_base_pos_pen.x += font_ai->chr_hor_advances[chr_index];
+    }
+
+    const int remaining_count = str_len - cur_line_begin_chr_index;
+
+    ApplyHorAlignOffsToLine(
+        &chr_positions[cur_line_begin_chr_index],
+        remaining_count,
+        hor_align,
+        chr_base_pos_pen.x + pos.x
+    );
+
+    const float total_height = chr_base_pos_pen.y + (float)font_ai->line_height;
+    const float ver_align_offs = -(total_height * (float)ver_align * 0.5f);
+
+    for (int i = 0; i < str_len; ++i) {
+        chr_positions[i].y += ver_align_offs;
+    }
+
+    return chr_positions;
+}
+
+bool LoadStrCollider(
+    s_rect* const rect,
+    const char* const str,
+    const int font_index,
+    const s_fonts_view* const fonts,
+    const s_vec_2d pos,
+    const e_str_hor_align hor_align,
+    const e_str_ver_align ver_align,
+    s_mem_arena* const temp_mem_arena
+) {
+    assert(rect);
+    assert(str);
+    assert(fonts);
+
+    const int str_len = strlen(str);
+    assert(str_len > 0);
+
+    const s_vec_2d* const chr_positions = MEM_ARENA_PUSH_TYPE_MANY(temp_mem_arena, s_vec_2d, str_len);
+
+    if (!chr_positions) {
+        return NULL;
+    }
+
+    s_rect_edges collider_edges;
+    bool initted = false;
+
+    for (int i = 0; i < str_len; ++i) {
+        const char chr = str[i];
+
+        if (chr == '\n') {
+            continue;
+        }
+
+        const int chr_index = (int)chr - FONT_CHR_RANGE_BEGIN;
+        const s_vec_2d_i size = RectISize(&fonts->arrangement_infos[font_index].chr_src_rects[chr_index]);
+
+        const float left = chr_positions[i].x;
+        const float top = chr_positions[i].y;
+        const float right = left + (float)size.x;
+        const float bottom = top + (float)size.y;
+
+        if (!initted) {
+            collider_edges.left = left;
+            collider_edges.top = top;
+            collider_edges.right = right;
+            collider_edges.bottom = bottom;
+            initted = true;
+        } else {
+            collider_edges.left = fminf(collider_edges.left, left);
+            collider_edges.top = fminf(collider_edges.top, top);
+            collider_edges.right = fmaxf(collider_edges.right, right);
+            collider_edges.bottom = fmaxf(collider_edges.bottom, bottom);
+        }
+    }
+
+    assert(initted);
+
+    const float width = collider_edges.right - collider_edges.left;
+    const float height = collider_edges.bottom - collider_edges.top;
+
+    *rect = (s_rect){
+        .x = collider_edges.left,
+        .y = collider_edges.top,
+        .width = width,
+        .height = height
+    };
+
+    return true;
 }
 
 s_rect_edges CalcTextureCoords(const s_rect_i src_rect, const s_vec_2d_i tex_size) {

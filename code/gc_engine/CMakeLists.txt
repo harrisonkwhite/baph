@@ -16,3 +16,4 @@ target_include_directories(gc_engine PUBLIC
 target_link_libraries(gc_engine PUBLIC glfw opengl32)
 
 target_compile_definitions(gc_engine PUBLIC GLFW_INCLUDE_NONE)
+target_compile_definitions(gc_engine PRIVATE _CRT_SECURE_NO_WARNINGS)

@@ -9,10 +9,17 @@
 
 #define CAMERA_SCALE 2.0f
 
+#define PAUSE_SCREEN_BG_ALPHA 0.2f
+
 typedef enum {
     ek_texture_all,
     eks_texture_cnt
 } e_texture;
+
+typedef enum {
+    ek_font_eb_garamond_64,
+    eks_font_cnt
+} e_fonts;
 
 typedef enum {
     ek_sprite_player,
@@ -67,9 +74,11 @@ typedef struct {
 
 typedef struct {
     s_textures textures;
+    s_fonts fonts;
     s_player player;
     s_enemy_list enemy_list;
     s_camera camera;
+    bool paused;
 } s_game;
 
 extern const s_rect_i g_sprite_src_rects[eks_sprite_cnt];

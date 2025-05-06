@@ -48,8 +48,7 @@ void CleanMemArena(s_mem_arena* const arena) {
 
 void* PushToMemArena(s_mem_arena* const arena, const int size, const int alignment) {
     assert(arena);
-    AssertMemArenaValidity(arena);
-    assert(IsMemArenaActive(arena));
+    assert(IsMemArenaValid(arena));
     assert(size > 0);
     assert(IsValidAlignment(alignment));
 
@@ -123,4 +122,36 @@ int FirstInactiveBitIndex(const t_byte* const bytes, const int byte_cnt) {
     }
     
     return -1;
+}
+
+t_byte* PushEntireFileContents(const char* const file_path, s_mem_arena* const mem_arena) {
+    assert(file_path);
+    assert(mem_arena);
+    assert(IsMemArenaValid(mem_arena));
+
+    FILE* const fs = fopen(file_path, "rb");
+
+    if (!fs) {
+        fprintf(stderr, "Failed to open \"%s\"!\n", file_path);
+        return NULL;
+    }
+
+    fseek(fs, 0, SEEK_END);
+    const int file_size = ftell(fs);
+    fseek(fs, 0, SEEK_SET);
+
+    t_byte* const contents = MEM_ARENA_PUSH_TYPE_MANY(mem_arena, t_byte, file_size);
+
+    if (!contents) {
+        return NULL;
+    }
+
+    const int read_cnt = fread(contents, 1, file_size, fs);
+    
+    if (read_cnt != file_size) {
+        fprintf(stderr, "Failed to read the contents of \"%s\"!\n", file_path);
+        return NULL;
+    }
+
+    return contents;
 }
