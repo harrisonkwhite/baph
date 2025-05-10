@@ -493,7 +493,7 @@ void RenderTexture(const s_rendering_context* const context, const int tex_index
 }
 
 bool RenderStr(
-    const s_rendering_context* const rendering_context,
+    const s_rendering_context* const context,
     const char* const str,
     const int font_index,
     const s_fonts* const fonts,
@@ -503,7 +503,7 @@ bool RenderStr(
     const s_color blend,
     s_mem_arena* const temp_mem_arena
 ) {
-    assert(rendering_context);
+    assert(context);
     assert(str);
     assert(fonts);
     assert(IsColorValid(blend));
@@ -538,7 +538,7 @@ bool RenderStr(
         const s_rect_edges chr_tex_coords = CalcTextureCoords(chr_src_rect, font_tex_size);
 
         Render(
-            rendering_context,
+            context,
             font_tex_gl_id,
             chr_tex_coords,
             str_chr_positions[i],
@@ -829,10 +829,10 @@ s_rect_edges CalcTextureCoords(const s_rect_i src_rect, const s_vec_2d_i tex_siz
     assert(src_rect.width > 0 && src_rect.height > 0);
     assert(tex_size.x > 0 && tex_size.y > 0);
 
-    s_rect_edges result;
-    result.left = (float)src_rect.x / (float)tex_size.x;
-    result.top = (float)src_rect.y / (float)tex_size.y;
-    result.right = (float)(src_rect.x + src_rect.width) / (float)tex_size.x;
-    result.bottom = (float)(src_rect.y + src_rect.height) / (float)tex_size.y;
-    return result;
+    return (s_rect_edges){
+        .left = (float)src_rect.x / tex_size.x,
+        .top = (float)src_rect.y / tex_size.y,
+        .right = (float)(src_rect.x + src_rect.width) / tex_size.x,
+        .bottom = (float)(src_rect.y + src_rect.height) / tex_size.y
+    };
 }

@@ -14,12 +14,16 @@
 #define PAUSE_SCREEN_BG_ALPHA 0.2f
 
 typedef enum {
-    ek_texture_all,
+    ek_texture_level,
+    ek_texture_ui,
+
     eks_texture_cnt
 } e_texture;
 
 typedef enum {
     ek_font_eb_garamond_64,
+    ek_font_eb_garamond_80,
+
     eks_font_cnt
 } e_fonts;
 
@@ -33,25 +37,14 @@ typedef enum {
 } e_sprite;
 
 typedef struct {
-    s_vec_2d pos;
-    s_vec_2d origin;
-    s_vec_2d scale;
-    float rot;
-    float alpha;
-    e_sprite sprite;
-    int flash_time;
-    float sort_depth;
-} s_layered_render_task;
-
-typedef struct {
-    s_layered_render_task* buf;
-    int cap;
-    int len;
-} s_layered_render_task_list;
+    e_texture tex;
+    s_rect_i src_rect;
+} s_sprite;
 
 typedef struct {
     bool killed;
     s_vec_2d pos;
+    float rot;
     s_vec_2d vel;
     int hp;
     int inv_time;
@@ -104,7 +97,7 @@ typedef struct {
     s_vec_2d kb;
 } s_damage_info;
 
-extern const s_rect_i g_sprite_src_rects[eks_sprite_cnt];
+extern const s_sprite g_sprites[eks_sprite_cnt];
 
 s_rect GenColliderRectFromSprite(const e_sprite sprite, const s_vec_2d pos, const s_vec_2d origin);
 bool PushColliderPolyFromSprite(s_poly* const poly, s_mem_arena* const mem_arena, const e_sprite sprite, const s_vec_2d pos, const s_vec_2d origin, const float rot);
@@ -112,22 +105,18 @@ bool PushColliderPolyFromSprite(s_poly* const poly, s_mem_arena* const mem_arena
 bool InitLevel(s_level* const level);
 bool LevelTick(s_game* const game, const s_window_state* const window_state, const s_input_state* const input_state, const s_input_state* const input_state_last, s_mem_arena* const temp_mem_arena);
 bool RenderLevel(const s_rendering_context* const rendering_context, const s_level* const level, const s_textures* const textures, const s_fonts* const fonts, s_mem_arena* const temp_mem_arena);
-void CleanLayeredRenderTaskList(s_layered_render_task_list* const task_list);
-bool AppendLayeredRenderTask(s_layered_render_task_list* const list, const s_vec_2d pos, const e_sprite sprite, const float sort_depth);
-bool AppendLayeredRenderTaskExt(s_layered_render_task_list* const list, const s_vec_2d pos, const s_vec_2d origin, const s_vec_2d scale, const float rot, const float alpha, const e_sprite sprite, const int flash_time, const float sort_depth);
-bool IsLayeredRenderTaskListValid(const s_layered_render_task_list* const list);
 bool SpawnProjectile(s_level* const level, const s_vec_2d pos, const float spd, const float dir, const int dmg, const bool from_enemy);
 
-void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state);
+void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_camera* const cam, const s_vec_2d_i display_size);
 bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last);
-bool AppendPlayerLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_player* const player);
+void RenderPlayer(const s_rendering_context* const rendering_context, const s_player* const player, const s_textures* const textures);
 s_rect GenPlayerDamageCollider(const s_vec_2d player_pos);
 void DamagePlayer(s_level* const level, const s_damage_info dmg_info);
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list);
 bool ProcEnemyAIs(s_enemy_list* const enemy_list);
 void ProcEnemyDeaths(s_level* const level);
-bool AppendEnemyLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_enemy_list* const enemy_list);
+void RenderEnemies(const s_rendering_context* const rendering_context, const s_enemy_list* const enemies, const s_textures* const textures);
 s_rect GenEnemyDamageCollider(const s_vec_2d enemy_pos);
 void DamageEnemy(s_level* const level, const int enemy_index, const s_damage_info dmg_info);
 
@@ -168,6 +157,20 @@ inline s_vec_2d DisplayToCameraPos(const s_vec_2d pos, const s_camera* const cam
         cam_tl.x + (pos.x / CAMERA_SCALE),
         cam_tl.y + (pos.y / CAMERA_SCALE)
     };
+}
+
+inline void RenderSprite(const s_rendering_context* const context, const int sprite_index, const s_textures* const textures, const s_vec_2d pos, const s_vec_2d origin, const s_vec_2d scale, const float rot, const s_color blend) {
+    RenderTexture(
+        context,
+        g_sprites[sprite_index].tex,
+        textures,
+        g_sprites[sprite_index].src_rect,
+        pos,
+        origin,
+        scale,
+        rot,
+        blend
+    );
 }
 
 #endif

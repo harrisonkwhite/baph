@@ -21,7 +21,11 @@ static s_vec_2d CalcPlayerMoveDir(const s_input_state* const input_state) {
     return NormalOrZero(move_axis);
 }
 
-void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state) {
+void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_camera* const cam, const s_vec_2d_i display_size) {
+    assert(player);
+    assert(input_state);
+    assert(display_size.x > 0 && display_size.y > 0);
+
     const s_vec_2d move_dir = CalcPlayerMoveDir(input_state);
     const s_vec_2d vel_targ = {move_dir.x * PLAYER_MOVE_SPD, move_dir.y * PLAYER_MOVE_SPD};
 
@@ -31,6 +35,9 @@ void ProcPlayerMovement(s_player* const player, const s_input_state* const input
 
     player->pos.x += player->vel.x;
     player->pos.y += player->vel.y;
+
+    const s_vec_2d mouse_cam_pos = DisplayToCameraPos(input_state->mouse_pos, cam, display_size);
+    player->rot = Dir(Vec2DDiff(mouse_cam_pos, player->pos));
 }
 
 bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last) {
@@ -56,18 +63,21 @@ static float CalcPlayerAlpha(const int inv_time) {
     return 1.0f;
 }
 
-bool AppendPlayerLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_player* const player) {
-    assert(tasks);
-    assert(player);
-    assert(!player->killed);
+void RenderPlayer(const s_rendering_context* const rendering_context, const s_player* const player, const s_textures* const textures) {
+    assert(rendering_context);
+    assert(player && !player->killed);
+    assert(textures);
 
-    const float sort_depth = player->pos.y + (g_sprite_src_rects[ek_sprite_player].height / 2.0f);
-
-    if (!AppendLayeredRenderTask(tasks, player->pos, ek_sprite_player, sort_depth)) {
-        return false;
-    }
-
-    return true;
+    RenderSprite(
+        rendering_context,
+        ek_sprite_player,
+        textures,
+        player->pos,
+        (s_vec_2d){0.5f, 0.5f},
+        (s_vec_2d){1.0f, 1.0f},
+        player->rot,
+        WHITE
+    );
 }
 
 s_rect GenPlayerDamageCollider(const s_vec_2d player_pos) {

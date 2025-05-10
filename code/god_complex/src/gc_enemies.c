@@ -63,25 +63,29 @@ void ProcEnemyDeaths(s_level* const level) {
     }
 }
 
-bool AppendEnemyLayeredRenderTasks(s_layered_render_task_list* const tasks, const s_enemy_list* const enemy_list) {
-    assert(tasks);
-    assert(enemy_list);
+void RenderEnemies(const s_rendering_context* const rendering_context, const s_enemy_list* const enemies, const s_textures* const textures) {
+    assert(rendering_context);
+    assert(enemies);
+    assert(textures);
 
     for (int i = 0; i < ENEMY_LIMIT; i++) {
-        if (!IsEnemyActive(i, enemy_list)) {
+        if (!IsEnemyActive(i, enemies)) {
             continue;
         }
 
-        const s_enemy* const enemy = &enemy_list->buf[i];
+        const s_enemy* const enemy = &enemies->buf[i];
 
-        const float sort_depth = enemy->pos.y + (g_sprite_src_rects[ek_sprite_enemy].height / 2.0f);
-
-        if (!AppendLayeredRenderTask(tasks, enemy->pos, ek_sprite_enemy, sort_depth)) {
-            return false;
-        }
+        RenderSprite(
+            rendering_context,
+            ek_sprite_enemy,
+            textures,
+            enemy->pos,
+            (s_vec_2d){0.5f, 0.5f},
+            (s_vec_2d){1.0f, 1.0f},
+            0.0f,
+            WHITE
+        );
     }
-    
-    return true;
 }
 
 s_rect GenEnemyDamageCollider(const s_vec_2d enemy_pos) {

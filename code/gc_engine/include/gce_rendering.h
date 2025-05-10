@@ -145,6 +145,7 @@ void CleanPersRenderData(s_pers_render_data* const render_data);
 s_render_batch_shader_prog LoadRenderBatchShaderProg();
 s_render_batch_gl_ids GenRenderBatch();
 
+// NOTE: Might be better if this takes in a pointer to allocated memory instead of doing the allocation/push itself.
 bool LoadTexturesFromFiles(s_textures* const textures, s_mem_arena* const mem_arena, const int tex_cnt, const t_texture_index_to_file_path tex_index_to_fp);
 void UnloadTextures(s_textures* const textures);
 
@@ -157,7 +158,7 @@ void RenderClear(const s_color col);
 
 void Render(const s_rendering_context* const context, const t_gl_id tex_gl_id, const s_rect_edges tex_coords, const s_vec_2d pos, const s_vec_2d size, const s_vec_2d origin, const float rot, const s_color blend);
 void RenderTexture(const s_rendering_context* const context, const int tex_index, const s_textures* const textures, const s_rect_i src_rect, const s_vec_2d pos, const s_vec_2d origin, const s_vec_2d scale, const float rot, const s_color blend);
-bool RenderStr(const s_rendering_context* const rendering_context, const char* const str, const int font_index, const s_fonts* const fonts, const s_vec_2d pos, const e_str_hor_align hor_align, const e_str_ver_align ver_align, const s_color blend, s_mem_arena* const temp_mem_arena);
+bool RenderStr(const s_rendering_context* const context, const char* const str, const int font_index, const s_fonts* const fonts, const s_vec_2d pos, const e_str_hor_align hor_align, const e_str_ver_align ver_align, const s_color blend, s_mem_arena* const temp_mem_arena);
 void RenderRect(const s_rendering_context* const context, const s_rect rect, const s_color blend);
 void RenderRectOutline(const s_rendering_context* const context, const s_rect rect, const s_color blend, const float thickness);
 void RenderLine(const s_rendering_context* const context, const s_vec_2d a, const s_vec_2d b, const s_color blend, const float width);

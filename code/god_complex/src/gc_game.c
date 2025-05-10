@@ -4,29 +4,34 @@
 #include "gce_game.h"
 #include "gce_math.h"
 
-const s_rect_i g_sprite_src_rects[eks_sprite_cnt] = {
-    {8, 0, 24, 40}, // Player
-    {8, 0, 24, 40}, // Enemy
-    {64, 10, 16, 4}, // Projectile
-    {0, 8, 8, 8} // Cursor
+const s_sprite g_sprites[eks_sprite_cnt] = {
+    (s_sprite){.tex = ek_texture_level, .src_rect = {0, 0, 24, 24}}, // Player
+    (s_sprite){.tex = ek_texture_level, .src_rect = {0, 24, 24, 24}}, // Enemy
+    (s_sprite){.tex = ek_texture_level, .src_rect = {24, 2, 16, 4}}, // Projectile
+    (s_sprite){.tex = ek_texture_ui, .src_rect = {0, 0, 8, 8}} // Cursor
 };
 
 static const char* TextureIndexToFilePath(const int index) {
     switch (index) {
-        case ek_texture_all:
-            return "assets/textures/all.png";
+        case ek_texture_level: return "assets/textures/level.png";
+        case ek_texture_ui: return "assets/textures/ui.png";
 
-        default:
-            return "";
+        default: return "";
     }
 }
 
 static s_font_load_info FontIndexToLoadInfo(const int index) {
     switch (index) {
         case ek_font_eb_garamond_64:
-            return (s_font_load_info) {
+            return (s_font_load_info){
                 .file_path = "assets/fonts/eb_garamond.ttf",
                 .height = 64
+            };
+
+        case ek_font_eb_garamond_80:
+            return (s_font_load_info){
+                .file_path = "assets/fonts/eb_garamond.ttf",
+                .height = 80
             };
 
         default:
@@ -82,9 +87,9 @@ static bool RenderGame(const s_game_render_func_data* const func_data) {
     // Render cursor.
     RenderTexture(
         &func_data->rendering_context,
-        ek_texture_all,
+        g_sprites[ek_sprite_cursor].tex,
         &game->textures,
-        g_sprite_src_rects[ek_sprite_cursor],
+        g_sprites[ek_sprite_cursor].src_rect,
         func_data->input_state->mouse_pos,
         (s_vec_2d){0.5, 0.5},
         (s_vec_2d){1.0, 1.0},
@@ -102,10 +107,10 @@ static void CleanGame(void* const user_mem) {
 
 s_rect GenColliderRectFromSprite(const e_sprite sprite, const s_vec_2d pos, const s_vec_2d origin) {
     return (s_rect){
-        pos.x - (g_sprite_src_rects[sprite].width * origin.x),
-        pos.y - (g_sprite_src_rects[sprite].height * origin.y),
-        g_sprite_src_rects[sprite].width,
-        g_sprite_src_rects[sprite].height
+        pos.x - (g_sprites[sprite].src_rect.width * origin.x),
+        pos.y - (g_sprites[sprite].src_rect.height * origin.y),
+        g_sprites[sprite].src_rect.width,
+        g_sprites[sprite].src_rect.height
     };
 }
 
@@ -116,7 +121,7 @@ bool PushColliderPolyFromSprite(s_poly* const poly, s_mem_arena* const mem_arena
     assert(IsMemArenaValid(mem_arena));
     assert(IsOriginValid(origin));
 
-    return PushQuadPolyRotated(poly, mem_arena, pos, (s_vec_2d){g_sprite_src_rects[sprite].width, g_sprite_src_rects[sprite].height}, origin, rot);
+    return PushQuadPolyRotated(poly, mem_arena, pos, (s_vec_2d){g_sprites[sprite].src_rect.width, g_sprites[sprite].src_rect.height}, origin, rot);
 }
 
 int main() {
