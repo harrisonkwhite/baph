@@ -4,6 +4,7 @@
 #include "gce_math.h"
 
 #define ENEMY_VEL_LERP_FACTOR 0.2f
+#define ENEMY_DMG_FLASH_TIME 10
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list) {
     const int enemy_index = FirstInactiveBitIndex(enemy_list->activity, sizeof(enemy_list->activity));
@@ -23,7 +24,7 @@ bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list) {
     return true;
 }
 
-bool ProcEnemyAIs(s_enemy_list* const enemy_list) {
+bool UpdateEnemies(s_enemy_list* const enemy_list) {
     assert(enemy_list);
     
     for (int i = 0; i < ENEMY_LIMIT; i++) {
@@ -63,10 +64,11 @@ void ProcEnemyDeaths(s_level* const level) {
     }
 }
 
-void RenderEnemies(const s_rendering_context* const rendering_context, const s_enemy_list* const enemies, const s_textures* const textures) {
+void RenderEnemies(const s_rendering_context* const rendering_context, const s_enemy_list* const enemies, const s_textures* const textures, const s_shader_progs* const shader_progs) {
     assert(rendering_context);
     assert(enemies);
     assert(textures);
+    assert(shader_progs);
 
     for (int i = 0; i < ENEMY_LIMIT; i++) {
         if (!IsEnemyActive(i, enemies)) {
@@ -74,6 +76,14 @@ void RenderEnemies(const s_rendering_context* const rendering_context, const s_e
         }
 
         const s_enemy* const enemy = &enemies->buf[i];
+
+        if (enemy->flash_time > 0) {
+            Flush(rendering_context);
+
+            SetSurface(rendering_context, 0);
+
+            RenderClear((s_color){0});
+        } 
 
         RenderSprite(
             rendering_context,
@@ -85,6 +95,25 @@ void RenderEnemies(const s_rendering_context* const rendering_context, const s_e
             0.0f,
             WHITE
         );
+
+        if (enemy->flash_time > 0) {
+            Flush(rendering_context);
+
+            UnsetSurface(rendering_context);
+
+            SetSurfaceShaderProg(rendering_context, shader_progs->gl_ids[ek_shader_prog_blend]);
+
+            SetSurfaceShaderProgUniform(
+                rendering_context,
+                "u_col",
+                (s_shader_prog_uniform_value){
+                    .type = ek_shader_prog_uniform_value_type_v3,
+                    .as_v3 = {1.0f, 1.0f, 1.0f}
+                }
+            );
+
+            RenderSurface(rendering_context, 0);
+        }
     }
 }
 
@@ -101,4 +130,5 @@ void DamageEnemy(s_level* const level, const int enemy_index, const s_damage_inf
     s_enemy* const enemy = &level->enemy_list.buf[enemy_index];
     enemy->vel = Vec2DSum(enemy->vel, dmg_info.kb);
     enemy->hp = MAX(enemy->hp - dmg_info.dmg, 0);
+    enemy->flash_time = ENEMY_DMG_FLASH_TIME;
 }

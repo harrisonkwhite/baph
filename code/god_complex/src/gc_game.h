@@ -28,6 +28,11 @@ typedef enum {
 } e_fonts;
 
 typedef enum {
+    ek_shader_prog_blend,
+    eks_shader_prog_cnt
+} e_shader_prog;
+
+typedef enum {
     ek_sprite_player,
     ek_sprite_enemy,
     ek_sprite_projectile,
@@ -89,6 +94,7 @@ typedef struct {
 typedef struct {
     s_textures textures;
     s_fonts fonts;
+    s_shader_progs shader_progs;
     s_level level;
 } s_game;
 
@@ -104,19 +110,19 @@ bool PushColliderPolyFromSprite(s_poly* const poly, s_mem_arena* const mem_arena
 
 bool InitLevel(s_level* const level);
 bool LevelTick(s_game* const game, const s_window_state* const window_state, const s_input_state* const input_state, const s_input_state* const input_state_last, s_mem_arena* const temp_mem_arena);
-bool RenderLevel(const s_rendering_context* const rendering_context, const s_level* const level, const s_textures* const textures, const s_fonts* const fonts, s_mem_arena* const temp_mem_arena);
+bool RenderLevel(const s_rendering_context* const rendering_context, const s_level* const level, const s_textures* const textures, const s_fonts* const fonts, const s_shader_progs* const shader_progs, s_mem_arena* const temp_mem_arena);
 bool SpawnProjectile(s_level* const level, const s_vec_2d pos, const float spd, const float dir, const int dmg, const bool from_enemy);
 
 void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_camera* const cam, const s_vec_2d_i display_size);
 bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last);
-void RenderPlayer(const s_rendering_context* const rendering_context, const s_player* const player, const s_textures* const textures);
+void RenderPlayer(const s_rendering_context* const rendering_context, const s_player* const player, const s_textures* const textures, const s_shader_progs* const shader_progs);
 s_rect GenPlayerDamageCollider(const s_vec_2d player_pos);
 void DamagePlayer(s_level* const level, const s_damage_info dmg_info);
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list);
-bool ProcEnemyAIs(s_enemy_list* const enemy_list);
+bool UpdateEnemies(s_enemy_list* const enemy_list);
 void ProcEnemyDeaths(s_level* const level);
-void RenderEnemies(const s_rendering_context* const rendering_context, const s_enemy_list* const enemies, const s_textures* const textures);
+void RenderEnemies(const s_rendering_context* const rendering_context, const s_enemy_list* const enemies, const s_textures* const textures, const s_shader_progs* const shader_progs);
 s_rect GenEnemyDamageCollider(const s_vec_2d enemy_pos);
 void DamageEnemy(s_level* const level, const int enemy_index, const s_damage_info dmg_info);
 

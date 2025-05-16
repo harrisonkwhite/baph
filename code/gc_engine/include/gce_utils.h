@@ -54,7 +54,7 @@ void ResetMemArena(s_mem_arena* const arena);
 void AssertMemArenaValidity(const s_mem_arena* const arena);
 
 #define MEM_ARENA_PUSH_TYPE(arena, type) (type*)PushToMemArena(arena, sizeof(type), alignof(type))
-#define MEM_ARENA_PUSH_TYPE_MANY(arena, type, cnt) (type*)PushToMemArena(arena, sizeof(type) * cnt, alignof(type))
+#define MEM_ARENA_PUSH_TYPE_MANY(arena, type, cnt) (type*)PushToMemArena(arena, sizeof(type) * (cnt), alignof(type))
 
 int FirstActiveBitIndex(const t_byte* const bytes, const int byte_cnt); // Returns -1 if an active bit is not found.
 int FirstInactiveBitIndex(const t_byte* const bytes, const int byte_cnt); // Returns -1 if an inactive bit is not found.
@@ -83,6 +83,6 @@ inline bool IsBitActive(const int bit_index, const t_byte* const bytes, const in
     return bytes[bit_index / 8] & (1 << (bit_index % 8));
 }
 
-t_byte* PushEntireFileContents(const char* const file_path, s_mem_arena* const mem_arena);
+t_byte* PushEntireFileContents(const char* const file_path, s_mem_arena* const mem_arena, const bool incl_term_byte);
 
 #endif

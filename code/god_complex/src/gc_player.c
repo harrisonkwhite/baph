@@ -53,6 +53,18 @@ bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, con
     return true;
 }
 
+void UpdatePlayerTimers(s_player* const player) {
+    assert(player);
+
+    if (player->inv_time > 0) {
+        player->inv_time--;
+    }
+
+    if (player->flash_time > 0) {
+        player->flash_time--;
+    }
+}
+
 static float CalcPlayerAlpha(const int inv_time) {
     assert(inv_time >= 0);
 
@@ -63,10 +75,18 @@ static float CalcPlayerAlpha(const int inv_time) {
     return 1.0f;
 }
 
-void RenderPlayer(const s_rendering_context* const rendering_context, const s_player* const player, const s_textures* const textures) {
+void RenderPlayer(const s_rendering_context* const rendering_context, const s_player* const player, const s_textures* const textures, const s_shader_progs* const shader_progs) {
     assert(rendering_context);
     assert(player && !player->killed);
     assert(textures);
+
+    if (player->flash_time > 0) {
+        Flush(rendering_context);
+
+        SetSurface(rendering_context, 0);
+
+        RenderClear((s_color){0});
+    }
 
     RenderSprite(
         rendering_context,
@@ -78,6 +98,25 @@ void RenderPlayer(const s_rendering_context* const rendering_context, const s_pl
         player->rot,
         WHITE
     );
+
+    if (player->flash_time > 0) {
+        Flush(rendering_context);
+
+        UnsetSurface(rendering_context);
+
+        SetSurfaceShaderProg(rendering_context, shader_progs->gl_ids[ek_shader_prog_blend]);
+
+        SetSurfaceShaderProgUniform(
+            rendering_context,
+            "u_col",
+            (s_shader_prog_uniform_value){
+                .type = ek_shader_prog_uniform_value_type_v3,
+                .as_v3 = {1.0f, 1.0f, 1.0f}
+            }
+        );
+
+        RenderSurface(rendering_context, 0);
+    }
 }
 
 s_rect GenPlayerDamageCollider(const s_vec_2d player_pos) {

@@ -123,7 +123,7 @@ bool LevelTick(s_game* const game, const s_window_state* const window_state, con
         return false;
     }
 
-    ProcEnemyAIs(&level->enemy_list);
+    UpdateEnemies(&level->enemy_list);
     UpdateProjectiles(level, temp_mem_arena);
     ProcEnemyDeaths(level);
     UpdateCamera(level, window_state, input_state);
@@ -152,14 +152,14 @@ void RenderProjectiles(const s_rendering_context* const rendering_context, const
     }
 }
 
-bool RenderLevel(const s_rendering_context* const rendering_context, const s_level* const level, const s_textures* const textures, const s_fonts* const fonts, s_mem_arena* const temp_mem_arena) {
+bool RenderLevel(const s_rendering_context* const rendering_context, const s_level* const level, const s_textures* const textures, const s_fonts* const fonts, const s_shader_progs* const shader_progs, s_mem_arena* const temp_mem_arena) {
     ZeroOut(&rendering_context->state->view_mat, sizeof(rendering_context->state->view_mat));
     InitCameraViewMatrix4x4(&rendering_context->state->view_mat, &level->camera, rendering_context->display_size);
 
     RenderClear((s_color){0.2, 0.3, 0.4, 1.0});
 
-    RenderEnemies(rendering_context, &level->enemy_list, textures);
-    RenderPlayer(rendering_context, &level->player, textures);
+    RenderEnemies(rendering_context, &level->enemy_list, textures, shader_progs);
+    RenderPlayer(rendering_context, &level->player, textures, shader_progs);
     RenderProjectiles(rendering_context, level->projectiles, level->proj_cnt, textures);
 
     Flush(rendering_context);

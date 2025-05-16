@@ -5,7 +5,7 @@
 #include <stb_truetype.h>
 #include <gce_rendering.h>
 
-static uint32_t CreateShaderFromSrc(const char* const src, const bool frag) {
+static t_gl_id CreateShaderFromSrc(const char* const src, const bool frag) {
     assert(src);
 
     const GLenum shader_type = frag ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER;
@@ -24,7 +24,7 @@ static uint32_t CreateShaderFromSrc(const char* const src, const bool frag) {
     return shader_gl_id;
 }
 
-static uint32_t CreateShaderProgFromSrcs(const char* const vert_src, const char* const frag_src) {
+static t_gl_id CreateShaderProgFromSrcs(const char* const vert_src, const char* const frag_src) {
     assert(vert_src);
     assert(frag_src);
 
@@ -52,7 +52,25 @@ static uint32_t CreateShaderProgFromSrcs(const char* const vert_src, const char*
     return prog_gl_id;
 }
 
-void InitPersRenderData(s_pers_render_data* const render_data, const s_vec_2d_i display_size) {
+static t_gl_id CreateShaderProgFromFiles(const s_shader_prog_file_paths fps, s_mem_arena* const temp_mem_arena) {
+    assert(temp_mem_arena);
+
+    const char* const vs_src = (const char*)PushEntireFileContents(fps.vs_fp, temp_mem_arena, true);
+
+    if (!vs_src) {
+        return 0;
+    }
+
+    const char* const fs_src = (const char*)PushEntireFileContents(fps.fs_fp, temp_mem_arena, true);
+
+    if (!fs_src) {
+        return 0;
+    }
+
+    return CreateShaderProgFromSrcs(vs_src, fs_src);
+}
+
+bool InitPersRenderData(s_pers_render_data* const render_data, const s_vec_2d_i display_size) {
     assert(render_data);
     assert(IsZero(render_data, sizeof(*render_data)));
     assert(display_size.x > 0 && display_size.y > 0);
@@ -63,8 +81,57 @@ void InitPersRenderData(s_pers_render_data* const render_data, const s_vec_2d_i 
     glGenTextures(1, &render_data->px_tex_gl_id);
     glBindTexture(GL_TEXTURE_2D, render_data->px_tex_gl_id);
 
+    //
+    // Surfaces
+    //
+    if (!InitRenderSurfaces(&render_data->surfs, display_size)) {
+        return false;
+    }
+
+    glGenVertexArrays(1, &render_data->surf_vert_array_gl_id);
+    glBindVertexArray(render_data->surf_vert_array_gl_id);
+
+    glGenBuffers(1, &render_data->surf_vert_buf_gl_id);
+    glBindBuffer(GL_ARRAY_BUFFER, render_data->surf_vert_buf_gl_id);
+
+    {
+        const float verts[] = {
+            -1.0, -1.0, 0.0, 0.0,
+             1.0, -1.0, 1.0, 0.0,
+             1.0,  1.0, 1.0, 1.0,
+            -1.0,  1.0, 0.0, 1.0
+        };
+
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), &verts[0], GL_STATIC_DRAW);
+    }
+
+    glGenBuffers(1, &render_data->surf_elem_buf_gl_id);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_data->surf_elem_buf_gl_id);
+
+    {
+        const unsigned short indices[] = {
+            0, 1, 2,
+            2, 3, 0
+        };
+
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), &indices[0], GL_STATIC_DRAW);
+    }
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, false, sizeof(float) * 4, (const void*)(sizeof(float) * 0));
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, false, sizeof(float) * 4, (const void*)(sizeof(float) * 2));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+
+    //
+    //
+    //
     const t_byte px_data[TEXTURE_CHANNEL_CNT] = {255, 255, 255, 255};
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px_data);
+
+    return true;
 }
 
 void CleanPersRenderData(s_pers_render_data* const render_data) {
@@ -271,7 +338,7 @@ bool LoadFontsFromFiles(s_fonts* const fonts, s_mem_arena* const mem_arena, cons
         assert(load_info.height > 0);
         assert(load_info.file_path);
 
-        const t_byte* const font_file_data = PushEntireFileContents(load_info.file_path, temp_mem_arena);
+        const t_byte* const font_file_data = (const t_byte*)PushEntireFileContents(load_info.file_path, temp_mem_arena, false);
 
         if (!font_file_data) {
             return false;
@@ -291,12 +358,12 @@ bool LoadFontsFromFiles(s_fonts* const fonts, s_mem_arena* const mem_arena, cons
             return false;
         }
 
-        const float scale = stbtt_ScaleForPixelHeight(&font_info, (float)load_info.height);
+        const float scale = stbtt_ScaleForPixelHeight(&font_info, load_info.height);
 
         int ascent, descent, line_gap;
         stbtt_GetFontVMetrics(&font_info, &ascent, &descent, &line_gap);
 
-        fonts->arrangement_infos[i].line_height = (int)((ascent - descent + line_gap) * scale);
+        fonts->arrangement_infos[i].line_height = (ascent - descent + line_gap) * scale;
 
         for (int y = 0; y < FONT_TEXTURE_HEIGHT_LIMIT; ++y) {
             for (int x = 0; x < FONT_TEXTURE_WIDTH; ++x) {
@@ -390,6 +457,55 @@ bool LoadFontsFromFiles(s_fonts* const fonts, s_mem_arena* const mem_arena, cons
     return true;
 }
 
+void UnloadFonts(s_fonts* const fonts) {
+    assert(fonts);
+
+    if (fonts->cnt > 0 && fonts->tex_gl_ids) {
+        glDeleteTextures(fonts->cnt, fonts->tex_gl_ids);
+    }
+
+    ZeroOut(fonts, sizeof(*fonts));
+}
+
+bool LoadShaderProgsFromFiles(s_shader_progs* const progs, s_mem_arena* const mem_arena, const int prog_cnt, const t_shader_prog_index_to_file_paths prog_index_to_fps, s_mem_arena* const temp_mem_arena) {
+    assert(progs);
+    assert(IsZero(progs, sizeof(*progs)));
+    assert(mem_arena);
+    assert(prog_cnt > 0);
+    assert(prog_index_to_fps);
+    assert(temp_mem_arena);
+
+    progs->gl_ids = MEM_ARENA_PUSH_TYPE_MANY(mem_arena, t_gl_id, prog_cnt);
+
+    if (!progs->gl_ids) {
+        return false;
+    }
+
+    progs->cnt = prog_cnt;
+
+    for (int i = 0; i < prog_cnt; i++) {
+        const s_shader_prog_file_paths fps = prog_index_to_fps(i);
+
+        progs->gl_ids[i] = CreateShaderProgFromFiles(fps, temp_mem_arena);
+
+        if (!progs->gl_ids[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void UnloadShaderProgs(s_shader_progs* const progs) {
+    assert(progs);
+
+    for (int i = 0; i < progs->cnt; i++) {
+        glDeleteProgram(progs->gl_ids[i]);
+    }
+
+    ZeroOut(progs, sizeof(*progs));
+}
+
 void BeginRendering(s_rendering_state* const state) {
     assert(state);
     ZeroOut(state, sizeof(*state));
@@ -403,7 +519,7 @@ void RenderClear(const s_color col) {
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void Render(const s_rendering_context* const context, const uint32_t tex_gl_id, const s_rect_edges tex_coords, const s_vec_2d pos, const s_vec_2d size, const s_vec_2d origin, const float rot, const s_color blend) {
+void Render(const s_rendering_context* const context, const t_gl_id tex_gl_id, const s_rect_edges tex_coords, const s_vec_2d pos, const s_vec_2d size, const s_vec_2d origin, const float rot, const s_color blend) {
     assert(IsOriginValid(origin));
     assert(IsColorValid(blend));
 
@@ -629,6 +745,96 @@ void RenderBarHor(const s_rendering_context* const context, const s_rect rect, c
     }
 }
 
+void SetSurface(const s_rendering_context* const rendering_context, const int surf_index) {
+    // NOTE: Should flushing be a prerequisite to this?
+
+    assert(rendering_context);
+
+    s_rendering_state* const rs = rendering_context->state;
+
+    assert(surf_index >= 0 && surf_index < RENDER_SURFACE_LIMIT);
+    assert(rs->surf_index_stack_height < RENDER_SURFACE_LIMIT);
+
+    // Add the surface index to the stack.
+    rs->surf_index_stack[rs->surf_index_stack_height] = surf_index;
+    rs->surf_index_stack_height++;
+
+    // Bind the surface framebuffer.
+    glBindFramebuffer(GL_FRAMEBUFFER, rendering_context->pers->surfs.framebuffer_gl_ids[surf_index]);
+}
+
+void UnsetSurface(const s_rendering_context* const rendering_context) {
+    assert(rendering_context);
+
+    s_rendering_state* const rs = rendering_context->state;
+
+    assert(rs->batch_slots_used_cnt == 0);
+    assert(rs->surf_index_stack_height > 0);
+
+    rs->surf_index_stack_height--;
+
+    if (rs->surf_index_stack_height == 0) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    } else {
+        const int new_surf_index = rs->surf_index_stack_height;
+        const t_gl_id fb_gl_id = rendering_context->pers->surfs.framebuffer_gl_ids[new_surf_index];
+        glBindFramebuffer(GL_FRAMEBUFFER, rendering_context->pers->surfs.framebuffer_gl_ids[new_surf_index]);
+    }
+}
+
+void SetSurfaceShaderProg(const s_rendering_context* const rendering_context, const t_gl_id gl_id) {
+    assert(gl_id != 0);
+    // NOTE: Should we also trip an assert if current shader program GL ID is not 0?
+
+    rendering_context->state->surf_shader_prog_gl_id = gl_id;
+    glUseProgram(rendering_context->state->surf_shader_prog_gl_id);
+}
+
+void SetSurfaceShaderProgUniform(const s_rendering_context* const rendering_context, const char* const name, const s_shader_prog_uniform_value val) {
+    assert(rendering_context->state->surf_shader_prog_gl_id != 0 && "Surface shader program must be set before modifying uniforms!");
+
+    const int loc = glGetUniformLocation(rendering_context->state->surf_shader_prog_gl_id, name);
+    assert(loc != -1 && "Failed to get location of shader uniform!");
+
+    switch (val.type) {
+        case ek_shader_prog_uniform_value_type_int:
+            glUniform1i(loc, val.as_int);
+            break;
+
+        case ek_shader_prog_uniform_value_type_float:
+            glUniform1f(loc, val.as_float);
+            break;
+
+        case ek_shader_prog_uniform_value_type_v2:
+            glUniform2f(loc, val.as_v2.x, val.as_v2.y);
+            break;
+
+        case ek_shader_prog_uniform_value_type_v3:
+            glUniform3f(loc, val.as_v3.x, val.as_v3.y, val.as_v3.z);
+            break;
+
+        case ek_shader_prog_uniform_value_type_v4:
+            glUniform4f(loc, val.as_v4.x, val.as_v4.y, val.as_v4.z, val.as_v4.w);
+            break;
+
+        case ek_shader_prog_uniform_value_type_mat4x4:
+            glUniformMatrix4fv(loc, 1, false, &val.as_mat4x4[0][0]);
+            break;
+    }
+}
+
+void RenderSurface(const s_rendering_context* const rendering_context, const int surf_index) {
+    assert(surf_index >= 0 && surf_index < RENDER_SURFACE_LIMIT);
+    assert(rendering_context->state->surf_shader_prog_gl_id != 0 && "Surface shader program must be set before rendering a surface!");
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, rendering_context->pers->surfs.framebuffer_tex_gl_ids[surf_index]);
+
+    glBindVertexArray(rendering_context->pers->surf_vert_array_gl_id);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rendering_context->pers->surf_elem_buf_gl_id);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
+}
+
 void Flush(const s_rendering_context* const context) {
     if (context->state->batch_slots_used_cnt == 0) {
         return;
@@ -658,6 +864,62 @@ void Flush(const s_rendering_context* const context) {
 
     context->state->batch_slots_used_cnt = 0;
     context->state->batch_tex_gl_id = 0;
+}
+
+static bool AttachFramebufferTexture(const t_gl_id fb_gl_id, const t_gl_id tex_gl_id, const s_vec_2d_i tex_size) {
+    assert(fb_gl_id != 0);
+    assert(tex_gl_id != 0);
+    assert(tex_size.x > 0 && tex_size.y > 0);
+
+    glBindTexture(GL_TEXTURE_2D, tex_gl_id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_size.x, tex_size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fb_gl_id);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_gl_id, 0);
+
+    const bool success = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    return success;
+}
+
+bool InitRenderSurfaces(s_render_surfaces* const surfs, const s_vec_2d_i size) {
+    assert(surfs && IsZero(surfs, sizeof(*surfs)));
+    assert(size.x > 0 && size.y > 0);
+
+    glGenFramebuffers(RENDER_SURFACE_LIMIT, &surfs->framebuffer_gl_ids[0]);
+    glGenTextures(RENDER_SURFACE_LIMIT, &surfs->framebuffer_tex_gl_ids[0]);
+
+    for (int i = 0; i < RENDER_SURFACE_LIMIT; i++) {
+        if (!AttachFramebufferTexture(surfs->framebuffer_gl_ids[i], surfs->framebuffer_tex_gl_ids[i], size)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ResizeRenderSurfaces(s_render_surfaces* const surfs, const s_vec_2d_i size) {
+    assert(surfs);
+    assert(size.x > 0 && size.y > 0);
+
+    // Delete old textures.
+    glDeleteTextures(RENDER_SURFACE_LIMIT, surfs->framebuffer_tex_gl_ids);
+
+    // Generate new ones with the given size.
+    glGenTextures(RENDER_SURFACE_LIMIT, surfs->framebuffer_tex_gl_ids);
+
+    for (int i = 0; i < RENDER_SURFACE_LIMIT; i++) {
+        if (!AttachFramebufferTexture(surfs->framebuffer_gl_ids[i], surfs->framebuffer_tex_gl_ids[i], size)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 static void ApplyHorAlignOffsToLine(
@@ -690,7 +952,6 @@ const s_vec_2d* PushStrChrPositions(
     assert(mem_arena);
     assert(font_index >= 0 && font_index < fonts->cnt);
     assert(fonts);
-    assert(IsFontsValid(fonts));
 
     const int str_len = (int)strlen(str);
     assert(str_len > 0);

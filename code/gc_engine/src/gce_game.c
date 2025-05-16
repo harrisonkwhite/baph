@@ -367,6 +367,11 @@ bool RunGame(const s_game_info* const info) {
         if (!Vec2DIsEqual(window_state_after_poll_events.size, VEC_2D_I_ZERO)
             && !Vec2DIsEqual(window_state_after_poll_events.size, window_state_at_frame_begin.size)) {
             glViewport(0, 0, window_state_after_poll_events.size.x, window_state_after_poll_events.size.y);
+
+            if (!ResizeRenderSurfaces(&pers_render_data.surfs, window_state_after_poll_events.size)) {
+                fprintf(stderr, "Failed to resize render surfaces!\n");
+                return false;
+            }
         }
     }
 

@@ -39,6 +39,19 @@ static s_font_load_info FontIndexToLoadInfo(const int index) {
     }
 }
 
+static s_shader_prog_file_paths ShaderProgIndexToFilePaths(const int index) {
+    switch (index) {
+        case ek_shader_prog_blend:
+            return (s_shader_prog_file_paths){
+                .vs_fp = "assets/shaders/blend.vert",
+                .fs_fp = "assets/shaders/blend.frag"
+            };
+
+        default:
+            return (s_shader_prog_file_paths){0};
+    }
+}
+
 static bool InitGame(const s_game_init_func_data* const func_data) {
     s_game* const game = func_data->user_mem;
 
@@ -49,6 +62,11 @@ static bool InitGame(const s_game_init_func_data* const func_data) {
 
     if (!LoadFontsFromFiles(&game->fonts, func_data->perm_mem_arena, eks_font_cnt, FontIndexToLoadInfo, func_data->temp_mem_arena)) {
         fprintf(stderr, "Failed to load game fonts!\n");
+        return false;
+    }
+
+    if (!LoadShaderProgsFromFiles(&game->shader_progs, func_data->perm_mem_arena, eks_shader_prog_cnt, ShaderProgIndexToFilePaths, func_data->temp_mem_arena)) {
+        fprintf(stderr, "Failed to load game shader programs!\n");
         return false;
     }
 
@@ -80,7 +98,7 @@ static bool GameTick(const s_game_tick_func_data* const func_data) {
 static bool RenderGame(const s_game_render_func_data* const func_data) {
     s_game* const game = func_data->user_mem;
 
-    if (!RenderLevel(&func_data->rendering_context, &game->level, &game->textures, &game->fonts, func_data->temp_mem_arena)) {
+    if (!RenderLevel(&func_data->rendering_context, &game->level, &game->textures, &game->fonts, &game->shader_progs, func_data->temp_mem_arena)) {
         return false;
     }
 

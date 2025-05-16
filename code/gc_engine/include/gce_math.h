@@ -30,6 +30,19 @@ typedef struct {
 typedef struct {
     float x;
     float y;
+    float z;
+} s_vec_3d;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+    float w;
+} s_vec_4d;
+
+typedef struct {
+    float x;
+    float y;
     float width;
     float height;
 } s_rect;

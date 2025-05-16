@@ -21,6 +21,8 @@
 #define RENDER_BATCH_SLOT_VERTS_SIZE (RENDER_BATCH_SLOT_VERT_CNT * RENDER_BATCH_SLOT_CNT * sizeof(float))
 #define RENDER_BATCH_SLOT_ELEM_CNT 6
 
+#define RENDER_SURFACE_LIMIT 32
+
 #define WHITE (s_color){1.0f, 1.0f, 1.0f, 1.0f}
 #define RED (s_color){1.0f, 0.0f, 0.0f, 1.0f}
 #define GREEN (s_color){0.0f, 1.0f, 0.0f, 1.0f}
@@ -47,8 +49,41 @@ typedef struct {
 } s_render_batch_shader_prog;
 
 typedef struct {
+    t_gl_id framebuffer_gl_ids[RENDER_SURFACE_LIMIT];
+    t_gl_id framebuffer_tex_gl_ids[RENDER_SURFACE_LIMIT];
+} s_render_surfaces;
+
+typedef enum {
+    ek_shader_prog_uniform_value_type_int,
+    ek_shader_prog_uniform_value_type_float,
+    ek_shader_prog_uniform_value_type_v2,
+    ek_shader_prog_uniform_value_type_v3,
+    ek_shader_prog_uniform_value_type_v4,
+    ek_shader_prog_uniform_value_type_mat4x4,
+} e_shader_prog_uniform_value_type;
+
+typedef struct {
+    e_shader_prog_uniform_value_type type;
+
+    union {
+        int as_int;
+        float as_float;
+        s_vec_2d as_v2;
+        s_vec_3d as_v3;
+        s_vec_4d as_v4;
+        t_matrix_4x4 as_mat4x4;
+    };
+} s_shader_prog_uniform_value;
+
+typedef struct {
     s_render_batch_shader_prog batch_shader_prog;
     s_render_batch_gl_ids batch_gl_ids;
+
+    s_render_surfaces surfs;
+    t_gl_id surf_vert_array_gl_id;
+    t_gl_id surf_vert_buf_gl_id;
+    t_gl_id surf_elem_buf_gl_id;
+
     t_gl_id px_tex_gl_id;
 } s_pers_render_data;
 
@@ -56,6 +91,11 @@ typedef struct {
     int batch_slots_used_cnt;
     float batch_slot_verts[RENDER_BATCH_SLOT_CNT][RENDER_BATCH_SLOT_VERT_CNT];
     t_gl_id batch_tex_gl_id;
+
+    t_gl_id surf_shader_prog_gl_id; // When a surface is rendered, this shader program is used.
+    int surf_index_stack[RENDER_SURFACE_LIMIT];
+    int surf_index_stack_height;
+
     t_matrix_4x4 view_mat;
 } s_rendering_state;
 
@@ -89,11 +129,17 @@ typedef struct {
     int cnt;
 } s_fonts;
 
-inline bool IsFontsValid(const s_fonts* const fonts) {
-    assert(fonts);
-    return IsZero(fonts, sizeof(*fonts))
-        || (fonts->cnt > 0 && fonts->arrangement_infos && fonts->tex_gl_ids && fonts->tex_heights);
-}
+typedef struct {
+    t_gl_id* gl_ids;
+    int cnt;
+} s_shader_progs;
+
+typedef struct {
+    const char* vs_fp;
+    const char* fs_fp;
+} s_shader_prog_file_paths;
+
+typedef s_shader_prog_file_paths (*t_shader_prog_index_to_file_paths)(const int index);
 
 typedef enum {
     ek_str_hor_align_left,
@@ -139,7 +185,7 @@ inline bool IsColorRGBValid(const s_color_rgb col) {
         && col.b >= 0.0 && col.b <= 1.0;
 }
 
-void InitPersRenderData(s_pers_render_data* const render_data, const s_vec_2d_i display_size);
+bool InitPersRenderData(s_pers_render_data* const render_data, const s_vec_2d_i display_size);
 void CleanPersRenderData(s_pers_render_data* const render_data);
 
 s_render_batch_shader_prog LoadRenderBatchShaderProg();
@@ -151,6 +197,9 @@ void UnloadTextures(s_textures* const textures);
 
 bool LoadFontsFromFiles(s_fonts* const fonts, s_mem_arena* const mem_arena, const int font_cnt, const t_font_index_to_load_info font_index_to_load_info, s_mem_arena* const temp_mem_arena);
 void UnloadFonts(s_fonts* const fonts);
+
+bool LoadShaderProgsFromFiles(s_shader_progs* const progs, s_mem_arena* const mem_arena, const int prog_cnt, const t_shader_prog_index_to_file_paths prog_index_to_fps, s_mem_arena* const temp_mem_arena);
+void UnloadShaderProgs(s_shader_progs* const progs);
 
 void BeginRendering(s_rendering_state* const state);
 
@@ -165,7 +214,16 @@ void RenderLine(const s_rendering_context* const context, const s_vec_2d a, cons
 void RenderPolyOutline(const s_rendering_context* const context, const s_poly poly, const s_color blend, const float width);
 void RenderBarHor(const s_rendering_context* const context, const s_rect rect, const float perc, const s_color_rgb col_front, const s_color_rgb col_back);
 
+void SetSurface(const s_rendering_context* const rendering_context, const int surf_index);
+void UnsetSurface(const s_rendering_context* const rendering_context);
+void SetSurfaceShaderProg(const s_rendering_context* const rendering_context, const t_gl_id gl_id);
+void SetSurfaceShaderProgUniform(const s_rendering_context* const rendering_context, const char* const name, const s_shader_prog_uniform_value val);
+void RenderSurface(const s_rendering_context* const rendering_context, const int surf_index);
+
 void Flush(const s_rendering_context* const context);
+
+bool InitRenderSurfaces(s_render_surfaces* const surfs, const s_vec_2d_i size);
+bool ResizeRenderSurfaces(s_render_surfaces* const surfs, const s_vec_2d_i size);
 
 s_rect_edges CalcTextureCoords(const s_rect_i src_rect, const s_vec_2d_i tex_size);
 

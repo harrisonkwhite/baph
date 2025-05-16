@@ -124,7 +124,7 @@ int FirstInactiveBitIndex(const t_byte* const bytes, const int byte_cnt) {
     return -1;
 }
 
-t_byte* PushEntireFileContents(const char* const file_path, s_mem_arena* const mem_arena) {
+t_byte* PushEntireFileContents(const char* const file_path, s_mem_arena* const mem_arena, const bool incl_term_byte) {
     assert(file_path);
     assert(mem_arena);
     assert(IsMemArenaValid(mem_arena));
@@ -140,7 +140,7 @@ t_byte* PushEntireFileContents(const char* const file_path, s_mem_arena* const m
     const int file_size = ftell(fs);
     fseek(fs, 0, SEEK_SET);
 
-    t_byte* const contents = MEM_ARENA_PUSH_TYPE_MANY(mem_arena, t_byte, file_size);
+    t_byte* const contents = MEM_ARENA_PUSH_TYPE_MANY(mem_arena, t_byte, incl_term_byte ? (file_size + 1) : file_size);
 
     if (!contents) {
         return NULL;
