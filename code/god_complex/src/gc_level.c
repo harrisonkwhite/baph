@@ -164,7 +164,11 @@ bool RenderLevel(const s_rendering_context* const rendering_context, const s_lev
     RenderClear((s_color){0.2, 0.3, 0.4, 1.0});
 
     RenderEnemies(rendering_context, &level->enemy_list, textures, shader_progs);
-    RenderPlayer(rendering_context, &level->player, textures, shader_progs);
+
+    if (!level->player.killed) {
+        RenderPlayer(rendering_context, &level->player, textures, shader_progs);
+    }
+
     RenderProjectiles(rendering_context, level->projectiles, level->proj_cnt, textures);
 
     Flush(rendering_context);

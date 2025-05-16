@@ -65,6 +65,14 @@ void UpdatePlayerTimers(s_player* const player) {
     }
 }
 
+void ProcPlayerDeath(s_level* const level) {
+    assert(level);
+
+    if (level->player.hp == 0 && !level->player.killed) {
+        level->player.killed = true;
+    }
+}
+
 static float CalcPlayerAlpha(const int inv_time) {
     assert(inv_time >= 0);
 
