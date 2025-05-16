@@ -123,7 +123,12 @@ bool LevelTick(s_game* const game, const s_window_state* const window_state, con
         return false;
     }
 
-    UpdateEnemies(&level->enemy_list);
+    UpdatePlayerTimers(&level->player);
+
+    if (!UpdateEnemies(level)) {
+        return false;
+    }
+
     UpdateProjectiles(level, temp_mem_arena);
     ProcEnemyDeaths(level);
     UpdateCamera(level, window_state, input_state);

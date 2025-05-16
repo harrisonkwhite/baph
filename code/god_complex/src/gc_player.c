@@ -43,7 +43,7 @@ void ProcPlayerMovement(s_player* const player, const s_input_state* const input
 bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last) {
     if (IsMouseButtonPressed(ek_mouse_button_code_left, input_state, input_state_last)) {
         const s_vec_2d mouse_cam_pos = DisplayToCameraPos(input_state->mouse_pos, &level->camera, display_size);
-        const float shoot_dir = Dir(Vec2DDiff(mouse_cam_pos, level->player.pos));
+        const float shoot_dir = DirFrom(level->player.pos, mouse_cam_pos);
 
         if (!SpawnProjectile(level, level->player.pos, 12.0f, shoot_dir, 4, false)) {
             return false;

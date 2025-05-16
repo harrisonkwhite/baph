@@ -4,6 +4,7 @@
 #include "gce_math.h"
 
 #define ENEMY_VEL_LERP_FACTOR 0.2f
+#define ENEMY_SHOOT_INTERVAL 120
 #define ENEMY_DMG_FLASH_TIME 10
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list) {
@@ -24,22 +25,34 @@ bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list) {
     return true;
 }
 
-bool UpdateEnemies(s_enemy_list* const enemy_list) {
-    assert(enemy_list);
+bool UpdateEnemies(s_level* const level) {
+    assert(level);
     
     for (int i = 0; i < ENEMY_LIMIT; i++) {
-        if (!IsEnemyActive(i, enemy_list)) {
+        if (!IsEnemyActive(i, &level->enemy_list)) {
             continue;
         }
         
-        s_enemy* const enemy = &enemy_list->buf[i];
+        s_enemy* const enemy = &level->enemy_list.buf[i];
+
+        enemy->vel = LerpVec2D(enemy->vel, VEC_2D_ZERO, ENEMY_VEL_LERP_FACTOR);
+        enemy->pos = Vec2DSum(enemy->pos, enemy->vel);
+
+        if (enemy->shoot_time < ENEMY_SHOOT_INTERVAL) {
+            enemy->shoot_time++;
+        } else {
+            const float shoot_dir = DirFrom(enemy->pos, level->player.pos);
+
+            if (!SpawnProjectile(level, enemy->pos, 12.0f, shoot_dir, 4, true)) {
+                return false;
+            }
+
+            enemy->shoot_time = 0;
+        }
 
         if (enemy->flash_time > 0) {
             enemy->flash_time -= 1;
         }
-
-        enemy->vel = LerpVec2D(enemy->vel, VEC_2D_ZERO, ENEMY_VEL_LERP_FACTOR);
-        enemy->pos = Vec2DSum(enemy->pos, enemy->vel);
     }
 
     return true;

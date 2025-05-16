@@ -60,6 +60,7 @@ typedef struct {
     s_vec_2d pos;
     s_vec_2d vel;
     int hp;
+    int shoot_time;
     int flash_time;
 } s_enemy;
 
@@ -115,12 +116,13 @@ bool SpawnProjectile(s_level* const level, const s_vec_2d pos, const float spd, 
 
 void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_camera* const cam, const s_vec_2d_i display_size);
 bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last);
+void UpdatePlayerTimers(s_player* const player);
 void RenderPlayer(const s_rendering_context* const rendering_context, const s_player* const player, const s_textures* const textures, const s_shader_progs* const shader_progs);
 s_rect GenPlayerDamageCollider(const s_vec_2d player_pos);
 void DamagePlayer(s_level* const level, const s_damage_info dmg_info);
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list);
-bool UpdateEnemies(s_enemy_list* const enemy_list);
+bool UpdateEnemies(s_level* const level);
 void ProcEnemyDeaths(s_level* const level);
 void RenderEnemies(const s_rendering_context* const rendering_context, const s_enemy_list* const enemies, const s_textures* const textures, const s_shader_progs* const shader_progs);
 s_rect GenEnemyDamageCollider(const s_vec_2d enemy_pos);

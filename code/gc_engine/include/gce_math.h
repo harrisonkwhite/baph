@@ -145,6 +145,10 @@ inline float Dir(const s_vec_2d vec) {
     return atan2f(-vec.y, vec.x);
 }
 
+inline float DirFrom(const s_vec_2d src, const s_vec_2d dest) {
+    return Dir(Vec2DDiff(dest, src));
+}
+
 inline s_vec_2d LenDir(float len, float dir) {
     return (s_vec_2d) { cosf(dir)* len, -sinf(dir) * len };
 }
