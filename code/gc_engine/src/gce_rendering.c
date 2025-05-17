@@ -78,8 +78,13 @@ bool InitPersRenderData(s_pers_render_data* const render_data, const s_vec_2d_i 
     render_data->batch_shader_prog = LoadRenderBatchShaderProg();
     render_data->batch_gl_ids = GenRenderBatch();
 
-    glGenTextures(1, &render_data->px_tex_gl_id);
-    glBindTexture(GL_TEXTURE_2D, render_data->px_tex_gl_id);
+    // Generate the pixel texture.
+    {
+        glGenTextures(1, &render_data->px_tex_gl_id);
+        glBindTexture(GL_TEXTURE_2D, render_data->px_tex_gl_id);
+        const t_byte px_data[TEXTURE_CHANNEL_CNT] = {255, 255, 255, 255};
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px_data);
+    }
 
     //
     // Surfaces
@@ -124,12 +129,6 @@ bool InitPersRenderData(s_pers_render_data* const render_data, const s_vec_2d_i 
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
-
-    //
-    //
-    //
-    const t_byte px_data[TEXTURE_CHANNEL_CNT] = {255, 255, 255, 255};
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px_data);
 
     return true;
 }
@@ -672,13 +671,10 @@ void RenderRect(const s_rendering_context* const context, const s_rect rect, con
     assert(rect.width > 0.0f && rect.height > 0.0f);
     assert(IsColorValid(blend));
 
+    const s_rect_edges tex_coords = {0.0f, 0.0f, 1.0f, 1.0f};
     const s_vec_2d pos = {rect.x, rect.y};
     const s_vec_2d size = {rect.width, rect.height};
-
-    const s_rect_edges tex_coords = {0.0f, 0.0f, 1.0f, 1.0f};
-
-    const s_vec_2d origin = {0.0f, 0.0f};
-    Render(context, context->pers->px_tex_gl_id, tex_coords, pos, size, origin, 0.0f, blend);
+    Render(context, context->pers->px_tex_gl_id, tex_coords, pos, size, (s_vec_2d){0}, 0.0f, blend);
 }
 
 void RenderRectOutline(const s_rendering_context* const context, const s_rect rect, const s_color blend, const float thickness) {
@@ -732,15 +728,17 @@ void RenderBarHor(const s_rendering_context* const context, const s_rect rect, c
 
     s_rect left_rect = {rect.x, rect.y, 0.0f, rect.height};
 
+    // Only render the left rectangle if percentage is not 0.
     if (perc > 0.0f) {
         left_rect.width = rect.width * perc;
-        s_color col = {col_front.r, col_front.g, col_front.b, 1.0f};
+        const s_color col = {col_front.r, col_front.g, col_front.b, 1.0f};
         RenderRect(context, left_rect, col);
     }
 
+    // Only render right rectangle if percentage is not 100.
     if (perc < 1.0f) {
-        s_rect right_rect = {rect.x + left_rect.width, rect.y, rect.width - left_rect.width, rect.height};
-        s_color col = {col_back.r, col_back.g, col_back.b, 1.0f};
+        const s_rect right_rect = {rect.x + left_rect.width, rect.y, rect.width - left_rect.width, rect.height};
+        const s_color col = {col_back.r, col_back.g, col_back.b, 1.0f};
         RenderRect(context, right_rect, col);
     }
 }

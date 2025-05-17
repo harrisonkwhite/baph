@@ -3,7 +3,12 @@
 #define PLAYER_MOVE_SPD 2.0f
 #define PLAYER_VEL_LERP_FACTOR 0.2f
 #define PLAYER_INV_TIME_LIMIT 20
-#define PLAYER_DMG_FLASH_TIME 10
+#define PLAYER_DMG_FLASH_TIME 6
+
+void InitPlayer(s_player* const player) {
+    assert(IsZero(player, sizeof(*player)));
+    player->hp = PLAYER_HP_LIMIT;
+}
 
 static s_vec_2d CalcPlayerMoveDir(const s_input_state* const input_state) {
     assert(input_state);
@@ -104,7 +109,7 @@ void RenderPlayer(const s_rendering_context* const rendering_context, const s_pl
         (s_vec_2d){0.5f, 0.5f},
         (s_vec_2d){1.0f, 1.0f},
         player->rot,
-        WHITE
+        (s_color){1.0f, 1.0f, 1.0f, CalcPlayerAlpha(player->inv_time)}
     );
 
     if (player->flash_time > 0) {

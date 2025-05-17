@@ -185,6 +185,10 @@ inline bool IsColorRGBValid(const s_color_rgb col) {
         && col.b >= 0.0 && col.b <= 1.0;
 }
 
+inline s_color_rgb ToColorRGB(const s_color col) {
+    return (s_color_rgb){col.r, col.g, col.b};
+}
+
 bool InitPersRenderData(s_pers_render_data* const render_data, const s_vec_2d_i display_size);
 void CleanPersRenderData(s_pers_render_data* const render_data);
 

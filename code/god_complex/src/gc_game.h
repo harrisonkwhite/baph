@@ -5,6 +5,8 @@
 
 #define GAME_TITLE "God Complex"
 
+#define PLAYER_HP_LIMIT 100
+
 #define ENEMY_LIMIT 256
 
 #define PROJECTILE_LIMIT 1024
@@ -114,6 +116,7 @@ bool LevelTick(s_game* const game, const s_window_state* const window_state, con
 bool RenderLevel(const s_rendering_context* const rendering_context, const s_level* const level, const s_textures* const textures, const s_fonts* const fonts, const s_shader_progs* const shader_progs, s_mem_arena* const temp_mem_arena);
 bool SpawnProjectile(s_level* const level, const s_vec_2d pos, const float spd, const float dir, const int dmg, const bool from_enemy);
 
+void InitPlayer(s_player* const player);
 void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_camera* const cam, const s_vec_2d_i display_size);
 bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last);
 void UpdatePlayerTimers(s_player* const player);

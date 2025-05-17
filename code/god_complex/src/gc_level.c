@@ -5,6 +5,8 @@
 bool InitLevel(s_level* const level) {
     assert(IsZero(level, sizeof(*level)));
 
+    InitPlayer(&level->player);
+
     if (!SpawnEnemy((s_vec_2d){32.0f, 32.0f}, &level->enemy_list)) {
         return false;
     }
@@ -130,7 +132,10 @@ bool LevelTick(s_game* const game, const s_window_state* const window_state, con
     }
 
     UpdateProjectiles(level, temp_mem_arena);
+
+    ProcPlayerDeath(level);
     ProcEnemyDeaths(level);
+
     UpdateCamera(level, window_state, input_state);
 
     return true;
@@ -178,6 +183,21 @@ bool RenderLevel(const s_rendering_context* const rendering_context, const s_lev
     //
     ZeroOut(&rendering_context->state->view_mat, sizeof(rendering_context->state->view_mat));
     InitIdenMatrix4x4(&rendering_context->state->view_mat);
+
+    RenderRect(rendering_context, (s_rect){0.0f, 0.0f, 32.0f, 32.0f}, RED);
+
+    // Render player health.
+    {
+        const s_vec_2d bar_size = {rendering_context->display_size.x * 0.25f, 20.0f};
+        const s_rect bar_rect = {
+            (rendering_context->display_size.x - bar_size.x) / 2.0f,
+            (rendering_context->display_size.y - bar_size.y) * 0.9f,
+            bar_size.x,
+            bar_size.y
+        };
+
+        RenderBarHor(rendering_context, bar_rect, (float)level->player.hp / PLAYER_HP_LIMIT, ToColorRGB(WHITE), ToColorRGB(BLACK));
+    }
 
     // Render pause screen.
     if (level->paused) {

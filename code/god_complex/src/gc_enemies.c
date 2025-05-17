@@ -5,7 +5,7 @@
 
 #define ENEMY_VEL_LERP_FACTOR 0.2f
 #define ENEMY_SHOOT_INTERVAL 120
-#define ENEMY_DMG_FLASH_TIME 10
+#define ENEMY_DMG_FLASH_TIME 6
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list) {
     const int enemy_index = FirstInactiveBitIndex(enemy_list->activity, sizeof(enemy_list->activity));
