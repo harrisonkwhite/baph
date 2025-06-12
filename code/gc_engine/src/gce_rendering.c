@@ -1048,7 +1048,7 @@ bool LoadStrCollider(
         }
 
         const int chr_index = (int)chr - FONT_CHR_RANGE_BEGIN;
-        const s_vec_2d_i size = RectISize(&fonts->arrangement_infos[font_index].chr_src_rects[chr_index]);
+        const s_vec_2d_i size = RectISize(fonts->arrangement_infos[font_index].chr_src_rects[chr_index]);
 
         const float left = chr_positions[i].x;
         const float top = chr_positions[i].y;

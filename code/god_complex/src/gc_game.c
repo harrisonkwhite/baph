@@ -8,6 +8,7 @@ const s_sprite g_sprites[eks_sprite_cnt] = {
     (s_sprite){.tex = ek_texture_level, .src_rect = {0, 0, 24, 24}}, // Player
     (s_sprite){.tex = ek_texture_level, .src_rect = {0, 24, 24, 24}}, // Enemy
     (s_sprite){.tex = ek_texture_level, .src_rect = {24, 2, 16, 4}}, // Projectile
+    (s_sprite){.tex = ek_texture_level, .src_rect = {0, 48, 16, 16}}, // Tile
     (s_sprite){.tex = ek_texture_ui, .src_rect = {0, 0, 8, 8}} // Cursor
 };
 

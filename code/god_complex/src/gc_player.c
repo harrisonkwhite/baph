@@ -1,5 +1,7 @@
 #include "gc_game.h"
 
+#include "gc_tilemap.h"
+
 #define PLAYER_MOVE_SPD 2.0f
 #define PLAYER_VEL_LERP_FACTOR 0.2f
 #define PLAYER_INV_TIME_LIMIT 20
@@ -26,7 +28,9 @@ static s_vec_2d CalcPlayerMoveDir(const s_input_state* const input_state) {
     return NormalOrZero(move_axis);
 }
 
-void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_camera* const cam, const s_vec_2d_i display_size) {
+#include <stdio.h>
+
+void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_tilemap* const tilemap, const s_camera* const cam, const s_vec_2d_i display_size) {
     assert(player);
     assert(input_state);
     assert(display_size.x > 0 && display_size.y > 0);
@@ -35,6 +39,14 @@ void ProcPlayerMovement(s_player* const player, const s_input_state* const input
     const s_vec_2d vel_targ = {move_dir.x * PLAYER_MOVE_SPD, move_dir.y * PLAYER_MOVE_SPD};
 
     player->vel = LerpVec2D(player->vel, vel_targ, PLAYER_VEL_LERP_FACTOR);
+
+    {
+        const s_rect collider = GenPlayerCollider(player->pos);
+
+        if (TilemapCollision(collider, tilemap)) {
+            printf("hakdsajkhda\n");
+        }
+    }
 
     //proc_solid_collisions(&player.vel, gen_player_movement_collider(player.pos), solid_colliders)
 
@@ -132,7 +144,7 @@ void RenderPlayer(const s_rendering_context* const rendering_context, const s_pl
     }
 }
 
-s_rect GenPlayerDamageCollider(const s_vec_2d player_pos) {
+s_rect GenPlayerCollider(const s_vec_2d player_pos) {
     return GenColliderRectFromSprite(ek_sprite_player, player_pos, (s_vec_2d){0.5f, 0.5f});
 }
 

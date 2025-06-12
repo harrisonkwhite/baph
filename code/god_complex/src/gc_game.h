@@ -2,6 +2,7 @@
 #define GC_GAME_H
 
 #include <gce_game.h>
+#include "gc_tilemap.h"
 
 #define GAME_TITLE "God Complex"
 
@@ -14,6 +15,8 @@
 #define CAMERA_SCALE 2.0f
 
 #define PAUSE_SCREEN_BG_ALPHA 0.2f
+
+#define TILE_SIZE 16
 
 typedef enum {
     ek_texture_level,
@@ -38,6 +41,7 @@ typedef enum {
     ek_sprite_player,
     ek_sprite_enemy,
     ek_sprite_projectile,
+    ek_sprite_tile,
     ek_sprite_cursor,
 
     eks_sprite_cnt
@@ -91,6 +95,7 @@ typedef struct {
     s_projectile projectiles[PROJECTILE_LIMIT];
     int proj_cnt;
     s_camera camera;
+    s_tilemap tilemap;
     bool paused;
 } s_level;
 
@@ -117,12 +122,12 @@ bool RenderLevel(const s_rendering_context* const rendering_context, const s_lev
 bool SpawnProjectile(s_level* const level, const s_vec_2d pos, const float spd, const float dir, const int dmg, const bool from_enemy);
 
 void InitPlayer(s_player* const player);
-void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_camera* const cam, const s_vec_2d_i display_size);
+void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_tilemap* const tilemap, const s_camera* const cam, const s_vec_2d_i display_size);
 bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last);
 void UpdatePlayerTimers(s_player* const player);
 void ProcPlayerDeath(s_level* const level);
 void RenderPlayer(const s_rendering_context* const rendering_context, const s_player* const player, const s_textures* const textures, const s_shader_progs* const shader_progs);
-s_rect GenPlayerDamageCollider(const s_vec_2d player_pos);
+s_rect GenPlayerCollider(const s_vec_2d player_pos);
 void DamagePlayer(s_level* const level, const s_damage_info dmg_info);
 
 bool SpawnEnemy(const s_vec_2d pos, s_enemy_list* const enemy_list);

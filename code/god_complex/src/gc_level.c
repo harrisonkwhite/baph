@@ -11,6 +11,12 @@ bool InitLevel(s_level* const level) {
         return false;
     }
 
+    for (int y = 10; y < 15; y++) {
+        for (int x = 10; x < 15; x++) {
+            ActivateTile(x, y, &level->tilemap);
+        }
+    }
+
     return true;
 }
 
@@ -45,7 +51,7 @@ static bool UpdateProjectiles(s_level* const level, s_mem_arena* const temp_mem_
 
     // Handle player collision.
     if (!level->player.killed) {
-        const s_rect player_dmg_collider = GenPlayerDamageCollider(level->player.pos);
+        const s_rect player_dmg_collider = GenPlayerCollider(level->player.pos);
 
         for (int i = 0; i < level->proj_cnt; i++) {
             const s_projectile* const proj = &level->projectiles[i];
@@ -119,7 +125,7 @@ bool LevelTick(s_game* const game, const s_window_state* const window_state, con
         return true;
     }
 
-    ProcPlayerMovement(&level->player, input_state, &level->camera, window_state->size);
+    ProcPlayerMovement(&level->player, input_state, &level->tilemap, &level->camera, window_state->size);
 
     if (!ProcPlayerShooting(level, window_state->size, input_state, input_state_last)) {
         return false;
@@ -176,6 +182,8 @@ bool RenderLevel(const s_rendering_context* const rendering_context, const s_lev
 
     RenderProjectiles(rendering_context, level->projectiles, level->proj_cnt, textures);
 
+    RenderTilemap(rendering_context, &level->tilemap, textures);
+
     Flush(rendering_context);
 
     //
@@ -183,8 +191,6 @@ bool RenderLevel(const s_rendering_context* const rendering_context, const s_lev
     //
     ZeroOut(&rendering_context->state->view_mat, sizeof(rendering_context->state->view_mat));
     InitIdenMatrix4x4(&rendering_context->state->view_mat);
-
-    RenderRect(rendering_context, (s_rect){0.0f, 0.0f, 32.0f, 32.0f}, RED);
 
     // Render player health.
     {
@@ -204,7 +210,7 @@ bool RenderLevel(const s_rendering_context* const rendering_context, const s_lev
         RenderRect(rendering_context, (s_rect){0, 0, rendering_context->display_size.x, rendering_context->display_size.y}, (s_color){0.0f, 0.0f, 0.0f, PAUSE_SCREEN_BG_ALPHA});
         RenderStr(rendering_context, "Paused", ek_font_eb_garamond_64, fonts, (s_vec_2d){rendering_context->display_size.x / 2.0f, rendering_context->display_size.y / 2.0f}, ek_str_hor_align_center, ek_str_ver_align_center, WHITE, temp_mem_arena);
     }
-    
+
     Flush(rendering_context);
 
     return true;
