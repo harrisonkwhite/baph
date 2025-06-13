@@ -5,16 +5,22 @@
 bool InitLevel(s_level* const level) {
     assert(IsZero(level, sizeof(*level)));
 
-    InitPlayer(&level->player);
+    InitPlayer(&level->player, (s_vec_2d){TILE_SIZE * TILEMAP_WIDTH * 0.5f, TILE_SIZE * TILEMAP_HEIGHT * 0.5f});
+
+    level->camera.pos_no_offs = level->player.pos;
 
     if (!SpawnEnemy((s_vec_2d){32.0f, 32.0f}, &level->enemy_list)) {
         return false;
     }
 
-    for (int y = 10; y < 15; y++) {
-        for (int x = 10; x < 15; x++) {
-            ActivateTile(&level->tilemap, x, y);
-        }
+    for (int i = 0; i < TILEMAP_WIDTH; i++) {
+        ActivateTile(&level->tilemap, i, 0);
+        ActivateTile(&level->tilemap, i, TILEMAP_HEIGHT - 1);
+    }
+
+    for (int i = 0; i < TILEMAP_HEIGHT; i++) {
+        ActivateTile(&level->tilemap, 0, i);
+        ActivateTile(&level->tilemap, TILEMAP_WIDTH - 1, i);
     }
 
     return true;

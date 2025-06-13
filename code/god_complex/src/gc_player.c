@@ -7,8 +7,9 @@
 #define PLAYER_INV_TIME_LIMIT 20
 #define PLAYER_DMG_FLASH_TIME 6
 
-void InitPlayer(s_player* const player) {
-    assert(IsZero(player, sizeof(*player)));
+void InitPlayer(s_player* const player, const s_vec_2d pos) {
+    assert(player && IsZero(player, sizeof(*player)));
+    player->pos = pos;
     player->hp = PLAYER_HP_LIMIT;
 }
 

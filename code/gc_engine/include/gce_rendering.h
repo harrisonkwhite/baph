@@ -16,12 +16,12 @@
 #define FONT_TEXTURE_HEIGHT_LIMIT 2048
  
 #define RENDER_BATCH_SHADER_PROG_VERT_CNT 13
-#define RENDER_BATCH_SLOT_CNT 2048 // NOTE: There seems to be an issue here.
+#define RENDER_BATCH_SLOT_CNT 256 // TODO: There seems to be an issue here. Seems to crash when this is high (e.g. at 2048).
 #define RENDER_BATCH_SLOT_VERT_CNT (RENDER_BATCH_SHADER_PROG_VERT_CNT * 4)
 #define RENDER_BATCH_SLOT_VERTS_SIZE (RENDER_BATCH_SLOT_VERT_CNT * RENDER_BATCH_SLOT_CNT * sizeof(float))
 #define RENDER_BATCH_SLOT_ELEM_CNT 6
 
-#define RENDER_SURFACE_LIMIT 32
+#define RENDER_SURFACE_LIMIT 8
 
 #define WHITE (s_color){1.0f, 1.0f, 1.0f, 1.0f}
 #define RED (s_color){1.0f, 0.0f, 0.0f, 1.0f}

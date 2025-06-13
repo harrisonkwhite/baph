@@ -6,8 +6,8 @@
 #include <gce_utils.h>
 
 #define TILE_SIZE 16
-#define TILEMAP_WIDTH 1024
-#define TILEMAP_HEIGHT 1024
+#define TILEMAP_WIDTH 64
+#define TILEMAP_HEIGHT 64
 
 typedef t_byte t_tilemap[BITS_TO_BYTES(TILEMAP_WIDTH * TILEMAP_HEIGHT)];
 

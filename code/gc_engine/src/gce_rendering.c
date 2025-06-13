@@ -834,6 +834,8 @@ void RenderSurface(const s_rendering_context* const rendering_context, const int
 }
 
 void Flush(const s_rendering_context* const context) {
+    assert(context);
+
     if (context->state->batch_slots_used_cnt == 0) {
         return;
     }
@@ -841,7 +843,7 @@ void Flush(const s_rendering_context* const context) {
     glBindVertexArray(context->pers->batch_gl_ids.vert_array_gl_id);
     glBindBuffer(GL_ARRAY_BUFFER, context->pers->batch_gl_ids.vert_buf_gl_id);
 
-    // NOTE: There's something wrong with the below? Try a high slot limit.
+    // TODO: There's something wrong with the below? Try a high slot limit.
     const GLsizeiptr write_size = RENDER_BATCH_SLOT_VERTS_SIZE * context->state->batch_slots_used_cnt;
     glBufferSubData(GL_ARRAY_BUFFER, 0, write_size, &context->state->batch_slot_verts[0][0]);
 
