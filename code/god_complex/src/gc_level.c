@@ -13,7 +13,7 @@ bool InitLevel(s_level* const level) {
 
     for (int y = 10; y < 15; y++) {
         for (int x = 10; x < 15; x++) {
-            ActivateTile(x, y, &level->tilemap);
+            ActivateTile(&level->tilemap, x, y);
         }
     }
 

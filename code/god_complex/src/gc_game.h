@@ -95,7 +95,7 @@ typedef struct {
     s_projectile projectiles[PROJECTILE_LIMIT];
     int proj_cnt;
     s_camera camera;
-    s_tilemap tilemap;
+    t_tilemap tilemap;
     bool paused;
 } s_level;
 
@@ -122,7 +122,7 @@ bool RenderLevel(const s_rendering_context* const rendering_context, const s_lev
 bool SpawnProjectile(s_level* const level, const s_vec_2d pos, const float spd, const float dir, const int dmg, const bool from_enemy);
 
 void InitPlayer(s_player* const player);
-void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_tilemap* const tilemap, const s_camera* const cam, const s_vec_2d_i display_size);
+void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const t_tilemap* const tilemap, const s_camera* const cam, const s_vec_2d_i display_size);
 bool ProcPlayerShooting(s_level* const level, const s_vec_2d_i display_size, const s_input_state* const input_state, const s_input_state* const input_state_last);
 void UpdatePlayerTimers(s_player* const player);
 void ProcPlayerDeath(s_level* const level);

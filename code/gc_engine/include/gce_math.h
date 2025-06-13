@@ -267,6 +267,24 @@ inline s_rect RectTranslated(const s_rect rect, const s_vec_2d trans) {
     return (s_rect){rect.x + trans.x, rect.y + trans.y, rect.width, rect.height};
 }
 
+inline s_rect_edges RectEdgesClamped(const s_rect_edges edges, const s_rect_edges clamp_edges) {
+    return (s_rect_edges){
+        MAX(edges.left, clamp_edges.left),
+        MAX(edges.top, clamp_edges.top),
+        MIN(edges.right, clamp_edges.right),
+        MIN(edges.bottom, clamp_edges.bottom)
+    };
+}
+
+inline s_rect_edges_i RectEdgesIClamped(const s_rect_edges_i edges, const s_rect_edges_i clamp_edges) {
+    return (s_rect_edges_i){
+        MAX(edges.left, clamp_edges.left),
+        MAX(edges.top, clamp_edges.top),
+        MIN(edges.right, clamp_edges.right),
+        MIN(edges.bottom, clamp_edges.bottom)
+    };
+}
+
 inline s_rect_i RectIClamped(const s_rect_i rect, const s_vec_2d_i span) {
     assert(span.x >= 0 && span.y >= 0);
 

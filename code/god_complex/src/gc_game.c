@@ -72,6 +72,7 @@ static bool InitGame(const s_game_init_func_data* const func_data) {
     }
 
     if (!InitLevel(&game->level)) {
+        fprintf(stderr, "Level initialisation failed!\n");
         return false;
     }
 

@@ -28,11 +28,11 @@ static s_vec_2d CalcPlayerMoveDir(const s_input_state* const input_state) {
     return NormalOrZero(move_axis);
 }
 
-#include <stdio.h>
-
-void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const s_tilemap* const tilemap, const s_camera* const cam, const s_vec_2d_i display_size) {
+void ProcPlayerMovement(s_player* const player, const s_input_state* const input_state, const t_tilemap* const tilemap, const s_camera* const cam, const s_vec_2d_i display_size) {
     assert(player);
     assert(input_state);
+    assert(tilemap);
+    assert(cam);
     assert(display_size.x > 0 && display_size.y > 0);
 
     const s_vec_2d move_dir = CalcPlayerMoveDir(input_state);
@@ -42,13 +42,8 @@ void ProcPlayerMovement(s_player* const player, const s_input_state* const input
 
     {
         const s_rect collider = GenPlayerCollider(player->pos);
-
-        if (TilemapCollision(collider, tilemap)) {
-            printf("hakdsajkhda\n");
-        }
+        ProcTilemapCollisions(&player->vel, collider, tilemap);
     }
-
-    //proc_solid_collisions(&player.vel, gen_player_movement_collider(player.pos), solid_colliders)
 
     player->pos.x += player->vel.x;
     player->pos.y += player->vel.y;
